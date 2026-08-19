@@ -3161,15 +3161,26 @@ async () => {
         return;
     }
 
-    if (
-        !window.confirm(
+const logoutMessage =
+    hasPendingSessionChanges()
+        ? (
             '確定登出系統？\n\n' +
-            '目前工作階段資料將清除，' +
+            '目前仍有尚未匯出 JSON 的工作變更，' +
+            '登出後本次工作階段資料將清除。\n\n' +
             '請確認已先匯出最新 JSON。'
         )
-    ) {
-        return;
-    }
+        : (
+            '確定登出系統？\n\n' +
+            '目前沒有尚未匯出的工作變更。'
+        );
+
+if (
+    !window.confirm(
+        logoutMessage
+    )
+) {
+    return;
+}
 
     isLoggingOutRef.current =
         true;
