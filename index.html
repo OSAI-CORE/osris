@@ -950,18 +950,19 @@ header .mobile-hide.sm\:block {
         }
     }
 
-    header,
-    footer,
-    .back-nav-btn,
-    .action-buttons,
-    .sidebar-mock,
-    .time-display-box,
-    .admin-controls,
-    .row-action-btn,
-    .db-controls,
-    .mobile-compare-card-list {
-        display: none !important;
-    }
+header,
+footer,
+.back-nav-btn,
+.action-buttons,
+.sidebar-mock,
+.time-display-box,
+.admin-controls,
+.row-action-btn,
+.db-controls,
+.data-export-modal,
+.mobile-compare-card-list {
+    display: none !important;
+}
 
     html,
     body {
@@ -1441,6 +1442,21 @@ const [isEditor, setIsEditor] = useState(false);
 const [showLoginModal, setShowLoginModal] = useState(false);
 const [showPermissionSettingsModal, setShowPermissionSettingsModal] = useState(false);
 
+/*
+ * 資料匯出視窗
+ */
+const [showDataExportModal, setShowDataExportModal] =
+    useState(false);
+
+const [dataExportView, setDataExportView] =
+    useState('choice');
+
+const [previewExpiryHours, setPreviewExpiryHours] =
+    useState(24);
+
+const [previewMaxViews, setPreviewMaxViews] =
+    useState(3);
+
 const [passwordInput, setPasswordInput] = useState('');
 const [oldPasswordInput, setOldPasswordInput] = useState('');
 const [newAdminPasswordInput, setNewAdminPasswordInput] = useState('');
@@ -1452,6 +1468,31 @@ const [changeError, setChangeError] = useState('');
 // 預覽載入狀態：避免「載入預覽」覆蓋正式資料庫
 const previewDataModeRef = useRef(false);
 const [isPreviewDataMode, setIsPreviewDataMode] = useState(false);
+
+/*
+ * 限時／限次預覽
+ */
+const LIMITED_PREVIEW_STORAGE_PREFIX =
+    'osh_regulation_identification_preview_';
+
+const activeLimitedPreviewIdRef =
+    useRef('');
+
+const limitedPreviewExpiryTimerRef =
+    useRef(null);
+
+/*
+ * Viewer 進入預覽前，
+ * 暫存原本畫面資料。
+ *
+ * 退出預覽或到期時，
+ * 可恢復原本 Viewer 畫面。
+ */
+const previewReturnLawsRef =
+    useRef(null);
+
+const previewReturnLawDetailsRef =
+    useRef(null);
 
 // 法規主數據與內容
 const [
@@ -2271,16 +2312,28 @@ useEffect(() => {
         if (e.key === 'Escape') {
             setShowLoginModal(false);
             setShowPermissionSettingsModal(false);
+
+            setShowDataExportModal(false);
+            setDataExportView('choice');
+
             setPasswordInput('');
             setLoginError(false);
-            setLoginErrorMessage('密碼錯誤，請重新輸入');
+            setLoginErrorMessage(
+                '密碼錯誤，請重新輸入'
+            );
         }
     };
 
-    document.addEventListener('keydown', handleEsc);
+    document.addEventListener(
+        'keydown',
+        handleEsc
+    );
 
     return () => {
-        document.removeEventListener('keydown', handleEsc);
+        document.removeEventListener(
+            'keydown',
+            handleEsc
+        );
     };
 }, []);
 
@@ -2495,38 +2548,740 @@ const handleBeforeUnload = (event) => {
                 return rDate > lDate;
             };
 
-const exportDatabase = () => {
+/* =========================================================
+   資料匯出視窗
+========================================================= */
+
+const openDataExportModal = () => {
     if (!canExportBackupData()) {
-        alert('請先登入使用者或管理者權限後再匯出資料。');
+        alert(
+            '請先登入使用者或管理者權限後再匯出資料。'
+        );
         return;
     }
 
     if (previewDataModeRef.current) {
-        alert('目前為預覽資料模式，請先以使用者或管理者身分正式載入資料後再匯出 JSON。');
+        alert(
+            '目前為預覽資料模式，請先正式載入資料後再匯出資料檔案。'
+        );
         return;
     }
 
-if (hasAnyUnsavedChanges()) {
-    alert(
-        '目前仍有尚未儲存的修改。\n\n' +
-        '請先按下綠色儲存按鈕，' +
-        '確認本次修改後再匯出 JSON。'
-    );
-    return;
-}    
+    setDataExportView('choice');
+    setShowDataExportModal(true);
+};
 
-    const exportDate = getTodayDateString();
+
+const closeDataExportModal = () => {
+    setShowDataExportModal(false);
+    setDataExportView('choice');
+};
+
+
+const showPreviewExportSettings = () => {
+    setDataExportView('preview');
+};
+
+
+const backToDataExportChoice = () => {
+    setDataExportView('choice');
+};
+
+
+/* =========================================================
+   限時／限次預覽 Helper
+========================================================= */
+
+/*
+ * 每次重新匯出預覽，
+ * 都產生全新的 previewId。
+ */
+const createLimitedPreviewId = () => {
+    const randomPart =
+        window.crypto &&
+        typeof window.crypto.randomUUID ===
+            'function'
+            ? window.crypto.randomUUID()
+            : (
+                `${Date.now()}-` +
+                Math.random()
+                    .toString(36)
+                    .slice(2, 10)
+            );
+
+    return (
+        'RIS-PREVIEW-' +
+        randomPart
+    );
+};
+
+
+/*
+ * 驗證預覽專用檔案，
+ * 並計算本瀏覽器已使用次數。
+ */
+const validateAndConsumeLimitedPreview =
+    (data) => {
+
+    if (
+        !data ||
+        data.version !==
+            'regulation-identification-preview-json-v1' ||
+        data.exportType !==
+            'limited-preview' ||
+        data.systemType !==
+            'regulation-identification' ||
+        !Array.isArray(
+            data.laws
+        ) ||
+        !data.lawDetails ||
+        typeof data.lawDetails !==
+            'object' ||
+        Array.isArray(
+            data.lawDetails
+        )
+    ) {
+        return {
+            ok: false,
+
+            message:
+                '此檔案不是本系統產生的預覽專用檔案。'
+        };
+    }
+
+
+    const previewId =
+        String(
+            data.previewId || ''
+        ).trim();
+
+
+    const expiresAtMs =
+        new Date(
+            data.expiresAt
+        ).getTime();
+
+
+    const maxViews =
+        Number(
+            data.maxViews
+        );
+
+
+    if (
+        !previewId ||
+        !Number.isFinite(
+            expiresAtMs
+        ) ||
+        !Number.isInteger(
+            maxViews
+        ) ||
+        maxViews < 1
+    ) {
+        return {
+            ok: false,
+
+            message:
+                '預覽檔案的限制設定不完整，無法開啟。'
+        };
+    }
+
+
+    /*
+     * 有效期限檢查
+     */
+    if (
+        Date.now() >=
+        expiresAtMs
+    ) {
+        return {
+            ok: false,
+
+            message:
+                '此預覽資料已超過有效期限。\n\n' +
+                '如需再次查看，請重新向資料提供者索取新的預覽檔案。'
+        };
+    }
+
+
+    const storageKey =
+        LIMITED_PREVIEW_STORAGE_PREFIX +
+        previewId;
+
+
+    let usage = {
+        count: 0,
+        expiresAt:
+            data.expiresAt
+    };
+
+
+    try {
+        const stored =
+            localStorage.getItem(
+                storageKey
+            );
+
+
+        if (stored) {
+            const parsed =
+                JSON.parse(
+                    stored
+                );
+
+            usage.count =
+                Math.max(
+                    Math.floor(
+                        Number(
+                            parsed.count ||
+                            0
+                        )
+                    ),
+                    0
+                );
+        }
+
+
+        if (
+            usage.count >=
+            maxViews
+        ) {
+            return {
+                ok: false,
+
+                message:
+                    '此預覽資料已達可開啟次數上限。\n\n' +
+                    '如需再次查看，請重新向資料提供者索取新的預覽檔案。'
+            };
+        }
+
+
+        /*
+         * 成功開啟一次
+         */
+        usage.count += 1;
+
+        usage.expiresAt =
+            data.expiresAt;
+
+
+        localStorage.setItem(
+            storageKey,
+            JSON.stringify(
+                usage
+            )
+        );
+
+    } catch (error) {
+        console.warn(
+            '預覽使用紀錄存取失敗：',
+            error
+        );
+
+        return {
+            ok: false,
+
+            message:
+                '瀏覽器目前無法建立預覽使用紀錄。\n\n' +
+                '為避免預覽限制失效，本次資料不予開啟。'
+        };
+    }
+
+
+    return {
+        ok: true,
+
+        previewId,
+
+        usedCount:
+            usage.count,
+
+        maxViews,
+
+        expiresAtMs
+    };
+};
+
+
+/*
+ * 清除預覽 Timer。
+ */
+const clearLimitedPreviewRuntimeState =
+    () => {
+
+    if (
+        limitedPreviewExpiryTimerRef.current
+    ) {
+        clearTimeout(
+            limitedPreviewExpiryTimerRef.current
+        );
+    }
+
+    limitedPreviewExpiryTimerRef.current =
+        null;
+
+    activeLimitedPreviewIdRef.current =
+        '';
+};
+
+
+/*
+ * 清除目前 Viewer 預覽，
+ * 並恢復載入預覽前的畫面。
+ */
+const clearViewerPreviewData =
+    () => {
+
+    clearLimitedPreviewRuntimeState();
+
+    previewDataModeRef.current =
+        false;
+
+    setIsPreviewDataMode(
+        false
+    );
+
+    setIsMonitorEditMode(
+        false
+    );
+
+    setIsWorkbenchEditMode(
+        false
+    );
+
+
+    monitorManualDirtyRef.current =
+        false;
+
+    workbenchManualDirtyRef.current =
+        false;
+
+    monitorCascadeDetailsDirtyRef.current =
+        false;
+
+    pendingDeletedLawIdsRef.current.clear();
+
+    sessionNeedsExportRef.current =
+        false;
+
+
+    setSelectedLaw(
+        null
+    );
+
+    setActiveTab(
+        'monitor'
+    );
+
+
+    /*
+     * 恢復預覽前 Viewer 原本看到的資料。
+     */
+    if (
+        Array.isArray(
+            previewReturnLawsRef.current
+        )
+    ) {
+        setLaws(
+            previewReturnLawsRef.current
+        );
+    }
+
+
+    if (
+        previewReturnLawDetailsRef.current &&
+        typeof previewReturnLawDetailsRef.current ===
+            'object'
+    ) {
+        setLawDetails(
+            previewReturnLawDetailsRef.current
+        );
+    }
+
+
+    previewReturnLawsRef.current =
+        null;
+
+    previewReturnLawDetailsRef.current =
+        null;
+};
+
+
+/*
+ * 已經開著預覽時，
+ * 到期立即自動關閉。
+ */
+const expireCurrentLimitedPreview =
+    () => {
+
+    if (
+        !previewDataModeRef.current ||
+        !activeLimitedPreviewIdRef.current
+    ) {
+        clearLimitedPreviewRuntimeState();
+        return;
+    }
+
+
+    clearViewerPreviewData();
+
+
+    alert(
+        '此預覽資料已超過有效期限。\n\n' +
+        '目前預覽內容已自動關閉。\n' +
+        '如需再次查看，請重新向資料提供者索取新的預覽檔案。'
+    );
+};
+
+
+/*
+ * Viewer 成功載入預覽後，
+ * 開始倒數有效期限。
+ */
+const startLimitedPreviewExpiryTimer =
+    (data) => {
+
+    clearLimitedPreviewRuntimeState();
+
+
+    const expiresAtMs =
+        new Date(
+            data.expiresAt
+        ).getTime();
+
+
+    if (
+        !Number.isFinite(
+            expiresAtMs
+        )
+    ) {
+        return;
+    }
+
+
+    activeLimitedPreviewIdRef.current =
+        String(
+            data.previewId ||
+            ''
+        );
+
+
+    const remaining =
+        expiresAtMs -
+        Date.now();
+
+
+    if (
+        remaining <= 0
+    ) {
+        expireCurrentLimitedPreview();
+        return;
+    }
+
+
+    limitedPreviewExpiryTimerRef.current =
+        setTimeout(
+            expireCurrentLimitedPreview,
+            remaining
+        );
+};
+
+
+/*
+ * Viewer 主動退出預覽。
+ */
+const exitPreviewMode =
+    () => {
+
+    if (
+        !previewDataModeRef.current
+    ) {
+        return;
+    }
+
+
+    const confirmed =
+        window.confirm(
+            '確定要退出預覽嗎？\n\n' +
+            '目前載入的預覽資料將被清除，' +
+            '但不會影響系統正式資料。'
+        );
+
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    clearViewerPreviewData();
+
+
+    showSystemToast(
+        '已退出預覽，暫存的預覽資料已清除。'
+    );
+};
+
+
+/*
+ * Modal 第一頁選擇正式資料。
+ */
+const exportFormalDataFromModal =
+    () => {
+
+    closeDataExportModal();
+
+    exportDatabase();
+};
+
+
+/*
+ * 匯出限時／限次預覽資料。
+ */
+const exportPreviewDatabase =
+    () => {
+
+    if (!canExportBackupData()) {
+        closeDataExportModal();
+
+        alert(
+            '請先登入使用者或管理者權限後再匯出資料。'
+        );
+
+        return;
+    }
+
+
+    if (
+        previewDataModeRef.current
+    ) {
+        closeDataExportModal();
+
+        alert(
+            '目前為預覽資料模式，無法再次產生預覽資料。'
+        );
+
+        return;
+    }
+
+
+    /*
+     * 尚有未按綠色儲存的修改，
+     * 不允許產生預覽檔案。
+     */
+    if (
+        hasAnyUnsavedChanges()
+    ) {
+        closeDataExportModal();
+
+        alert(
+            '目前仍有尚未儲存的修改。\n\n' +
+            '請先按下綠色儲存按鈕，' +
+            '確認本次修改後再匯出預覽檔案。'
+        );
+
+        return;
+    }
+
+
+    try {
+        const expiryHours =
+            Number(
+                previewExpiryHours ||
+                24
+            );
+
+        const maxViews =
+            Number(
+                previewMaxViews ||
+                3
+            );
+
+
+        const createdAtMs =
+            Date.now();
+
+        const expiresAtMs =
+            createdAtMs +
+            expiryHours *
+            60 *
+            60 *
+            1000;
+
+
+        const exportDate =
+            getTodayDateString();
+
+
+        const previewData = {
+            version:
+                'regulation-identification-preview-json-v1',
+
+            exportType:
+                'limited-preview',
+
+            systemType:
+                'regulation-identification',
+
+            previewId:
+                createLimitedPreviewId(),
+
+            createdAt:
+                new Date(
+                    createdAtMs
+                ).toISOString(),
+
+            expiresAt:
+                new Date(
+                    expiresAtMs
+                ).toISOString(),
+
+            maxViews,
+
+            laws,
+
+            lawDetails,
+
+            config: {}
+        };
+
+
+        const blob =
+            new Blob(
+                [
+                    JSON.stringify(
+                        previewData,
+                        null,
+                        2
+                    )
+                ],
+                {
+                    type:
+                        'application/json'
+                }
+            );
+
+
+        const url =
+            URL.createObjectURL(
+                blob
+            );
+
+
+        const linkElement =
+            document.createElement(
+                'a'
+            );
+
+
+        linkElement.href =
+            url;
+
+        linkElement.download =
+            `職安法規鑑別RIS_預覽_${exportDate}.json`;
+
+
+document.body.appendChild(
+    linkElement
+);
+
+linkElement.click();
+
+setTimeout(
+    () => {
+        document.body.removeChild(
+            linkElement
+        );
+
+        URL.revokeObjectURL(
+            url
+        );
+    },
+    0
+);
+
+
+        /*
+         * 注意：
+         * 預覽資料匯出不能把
+         * sessionNeedsExportRef 設成 false。
+         *
+         * 預覽檔不等於正式備份。
+         */
+
+
+        closeDataExportModal();
+
+
+        alert(
+            '預覽資料已匯出。\n\n' +
+            `有效期限：${expiryHours} 小時\n` +
+            `可開啟次數：${maxViews} 次`
+        );
+
+    } catch (error) {
+        console.error(
+            '匯出預覽資料失敗：',
+            error
+        );
+
+        alert(
+            '匯出預覽資料失敗，請稍後再試。'
+        );
+    }
+};
+
+const exportDatabase = () => {
+    if (!canExportBackupData()) {
+        alert(
+            '請先登入使用者或管理者權限後再匯出資料。'
+        );
+        return;
+    }
+
+
+    if (
+        previewDataModeRef.current
+    ) {
+        alert(
+            '目前為預覽資料模式，請先以使用者或管理者身分正式載入資料後再匯出資料檔案。'
+        );
+        return;
+    }
+
+
+    if (
+        hasAnyUnsavedChanges()
+    ) {
+        alert(
+            '目前仍有尚未儲存的修改。\n\n' +
+            '請先按下綠色儲存按鈕，' +
+            '確認本次修改後再匯出資料檔案。'
+        );
+
+        return;
+    }
+
+
+    const exportDate =
+        getTodayDateString();
+
 
     const exportData = {
-        version: "regulation-identification-system-json-v2",
-        exportType: "unified-data",
-        exportedAt: new Date().toISOString(),
+        version:
+            "regulation-identification-system-json-v2",
+
+        exportType:
+            "unified-data",
+
+        exportedAt:
+            new Date().toISOString(),
 
         laws,
+
         lawDetails,
 
         /*
-         * 統一版 JSON 不匯出：
+         * 統一版資料不匯出：
          * adminPassword
          * editorPassword
          * editorEnabled
@@ -2534,21 +3289,55 @@ if (hasAnyUnsavedChanges()) {
         config: {}
     };
 
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = `職安法規鑑別RIS_${exportDate}.json`;
 
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+    const dataStr =
+        JSON.stringify(
+            exportData,
+            null,
+            2
+        );
+
+
+    const dataUri =
+        'data:application/json;charset=utf-8,' +
+        encodeURIComponent(
+            dataStr
+        );
+
+
+    const exportFileDefaultName =
+        `職安法規鑑別RIS_${exportDate}.json`;
+
+
+    const linkElement =
+        document.createElement(
+            'a'
+        );
+
+
+    linkElement.setAttribute(
+        'href',
+        dataUri
+    );
+
+    linkElement.setAttribute(
+        'download',
+        exportFileDefaultName
+    );
+
     linkElement.click();
 
-/*
- * 最新工作成果已匯出 JSON。
- */
-sessionNeedsExportRef.current =
-    false;
 
+    /*
+     * 正式資料檔案已完成匯出。
+     */
+    sessionNeedsExportRef.current =
+        false;
+
+
+    showSystemToast(
+        '資料檔案已匯出。'
+    );
 };
 
 const applyImportedRegulationData = (importedData) => {
@@ -2604,12 +3393,15 @@ const importDatabase = (
     event,
     mode = 'import'
 ) => {
+
     const file =
         event.target.files[0];
+
 
     if (!file) {
         return;
     }
+
 
     if (
         mode === 'import' &&
@@ -2620,9 +3412,13 @@ const importDatabase = (
         );
 
         setShowLoginModal(true);
-        event.target.value = '';
+
+        event.target.value =
+            '';
+
         return;
     }
+
 
     if (
         mode === 'preview' &&
@@ -2632,54 +3428,112 @@ const importDatabase = (
             '目前無法載入預覽資料。'
         );
 
-        event.target.value = '';
+        event.target.value =
+            '';
+
         return;
     }
+
 
     const reader =
         new FileReader();
 
-    reader.onload = async (e) => {
+
+    reader.onload =
+        async (e) => {
+
         try {
             const importedData =
                 JSON.parse(
                     e.target.result
                 );
 
-            const parsedData =
-                applyImportedRegulationData(
-                    importedData
-                );
 
-            /*
-             * 預覽載入：
-             * 只更新目前畫面，
-             * 完全不寫入 IndexedDB。
-             */
-            if (mode === 'preview') {
+            /* =====================================================
+               Viewer：
+               只接受預覽專用檔案
+            ===================================================== */
+            if (
+                mode ===
+                'preview'
+            ) {
+
+                const previewCheck =
+                    validateAndConsumeLimitedPreview(
+                        importedData
+                    );
+
+
+                if (
+                    !previewCheck.ok
+                ) {
+                    alert(
+                        previewCheck.message
+                    );
+
+                    return;
+                }
+
+
+                /*
+                 * 正常 Viewer 不會有正式修改，
+                 * 這裡仍保留防呆。
+                 */
                 if (
                     hasPendingSessionChanges()
                 ) {
                     const confirmed =
-                        confirm(
+                        window.confirm(
                             '目前有尚未儲存的修改。\n\n' +
                             '載入預覽資料將覆蓋目前畫面內容，' +
                             '這些未儲存修改將被放棄。\n\n' +
                             '確定要繼續嗎？'
                         );
 
+
                     if (!confirmed) {
                         return;
                     }
                 }
 
+
+                /*
+                 * 保存 Viewer 進入預覽前
+                 * 原本看到的畫面資料。
+                 */
+                previewReturnLawsRef.current =
+                    JSON.parse(
+                        JSON.stringify(
+                            laws
+                        )
+                    );
+
+
+                previewReturnLawDetailsRef.current =
+                    JSON.parse(
+                        JSON.stringify(
+                            lawDetails
+                        )
+                    );
+
+
                 previewDataModeRef.current =
                     true;
 
-                setIsPreviewDataMode(true);
 
-                setIsMonitorEditMode(false);
-                setIsWorkbenchEditMode(false);
+                setIsPreviewDataMode(
+                    true
+                );
+
+
+                setIsMonitorEditMode(
+                    false
+                );
+
+                setIsWorkbenchEditMode(
+                    false
+                );
+
 
                 monitorManualDirtyRef.current =
                     false;
@@ -2693,65 +3547,153 @@ const importDatabase = (
                 pendingDeletedLawIdsRef.current.clear();
 
                 sessionNeedsExportRef.current =
-    false;
+                    false;
+
+
+                setSelectedLaw(
+                    null
+                );
+
+                setActiveTab(
+                    'monitor'
+                );
+
 
                 setLaws(
-                    parsedData.laws
+                    importedData.laws
                 );
 
                 setLawDetails(
-                    parsedData.lawDetails
+                    importedData.lawDetails
                 );
 
-                alert(
-                    '預覽資料載入成功！'
+
+                /*
+                 * 啟動到期 Timer。
+                 */
+                startLimitedPreviewExpiryTimer(
+                    importedData
                 );
+
+
+                alert(
+                    '預覽資料載入成功！\n\n' +
+                    `本裝置已使用 ${previewCheck.usedCount} / ${previewCheck.maxViews} 次\n` +
+                    `有效至：${
+                        new Date(
+                            importedData.expiresAt
+                        ).toLocaleString(
+                            'zh-TW',
+                            {
+                                hour12:
+                                    false
+                            }
+                        )
+                    }`
+                );
+
 
                 return;
             }
+
+
+            /* =====================================================
+               User / Admin：
+               預覽專用檔案不能進正式工作區
+            ===================================================== */
+            if (
+                importedData &&
+                importedData.exportType ===
+                    'limited-preview'
+            ) {
+
+                alert(
+                    '此檔案為預覽專用資料，不能載入正式工作區。\n\n' +
+                    '如需接續編輯，請使用正式「匯出資料」所產生的檔案。'
+                );
+
+
+                return;
+            }
+
+
+            /*
+             * 正式資料仍沿用原本
+             * v2 與舊版格式相容邏輯。
+             */
+            const parsedData =
+                applyImportedRegulationData(
+                    importedData
+                );
+
 
             const importLabel =
                 isAdmin
                     ? '匯入資料'
                     : '載入資料';
 
-const unsavedWarning =
-    hasPendingSessionChanges()
-                    ? '\n\n目前有尚未儲存的修改，' +
-                      '繼續後將放棄這些修改。'
+
+            const pendingWorkWarning =
+                hasPendingSessionChanges()
+
+                    ? (
+                        '\n\n目前有尚未儲存或尚未匯出的工作成果，' +
+                        '繼續後將被覆蓋。'
+                    )
+
                     : '';
 
+
             const confirmed =
-                confirm(
-                    `${importLabel}將覆蓋目前所有紀錄，` +
-                    `確定要繼續嗎？` +
-                    unsavedWarning
+                window.confirm(
+                    `${importLabel}將覆蓋目前所有紀錄，確定要繼續嗎？` +
+                    pendingWorkWarning
                 );
+
 
             if (!confirmed) {
                 return;
             }
 
-/*
- * 正式 JSON 只載入
- * 目前網頁工作階段。
- *
- * 同時再次清除舊版
- * IndexedDB 殘留資料。
- */
-await dbManager.clearAll();
 
-/*
- * 舊版 IndexedDB 清理完成後，
- * 更新目前工作階段畫面資料。
- */
+            /*
+             * 正式載入前，
+             * 再次清除舊版 IndexedDB。
+             */
+            await dbManager.clearAll();
+
+
+            /*
+             * 如之前有預覽 Timer，
+             * 正式載入時一定停止。
+             */
+            clearLimitedPreviewRuntimeState();
+
+
+            previewReturnLawsRef.current =
+                null;
+
+            previewReturnLawDetailsRef.current =
+                null;
+
+
             previewDataModeRef.current =
                 false;
 
-            setIsPreviewDataMode(false);
 
-            setIsMonitorEditMode(false);
-            setIsWorkbenchEditMode(false);
+            setIsPreviewDataMode(
+                false
+            );
+
+
+            setIsMonitorEditMode(
+                false
+            );
+
+            setIsWorkbenchEditMode(
+                false
+            );
+
 
             monitorManualDirtyRef.current =
                 false;
@@ -2762,10 +3704,21 @@ await dbManager.clearAll();
             monitorCascadeDetailsDirtyRef.current =
                 false;
 
-            pendingDeletedLawIdsRef.current.clear();            
+            pendingDeletedLawIdsRef.current.clear();
 
-sessionNeedsExportRef.current =
-    false;
+
+            sessionNeedsExportRef.current =
+                false;
+
+
+            setSelectedLaw(
+                null
+            );
+
+            setActiveTab(
+                'monitor'
+            );
+
 
             setLaws(
                 parsedData.laws
@@ -2775,9 +3728,11 @@ sessionNeedsExportRef.current =
                 parsedData.lawDetails
             );
 
+
             alert(
                 `${importLabel}成功！`
             );
+
 
         } catch (error) {
             console.error(
@@ -2785,28 +3740,38 @@ sessionNeedsExportRef.current =
                 error
             );
 
+
             alert(
                 '資料載入失敗：' +
                 (
                     error.message ||
-                    '未知錯誤'
+                    '檔案格式不正確或內容已損毀。'
                 )
             );
 
+
         } finally {
-            event.target.value = '';
+            event.target.value =
+                '';
         }
     };
 
-    reader.onerror = () => {
+
+    reader.onerror =
+        () => {
+
         alert(
             '檔案讀取失敗，請重新選擇資料檔案。'
         );
 
-        event.target.value = '';
+        event.target.value =
+            '';
     };
 
-    reader.readAsText(file);
+
+    reader.readAsText(
+        file
+    );
 };
 
 const handleLogin = async () => {
@@ -3165,13 +4130,13 @@ const logoutMessage =
     hasPendingSessionChanges()
         ? (
             '確定登出系統？\n\n' +
-            '目前仍有尚未匯出 JSON 的工作變更，' +
+            '目前仍有尚未儲存或尚未匯出資料檔案的工作成果，' +
             '登出後本次工作階段資料將清除。\n\n' +
-            '請確認已先匯出最新 JSON。'
+            '請確認已先完成儲存並匯出最新資料檔案。'
         )
         : (
             '確定登出系統？\n\n' +
-            '目前沒有尚未匯出的工作變更。'
+            '目前沒有尚未儲存或尚未匯出的工作變更。'
         );
 
 if (
@@ -3212,6 +4177,8 @@ pendingDeletedLawIdsRef.current.clear();
 sessionNeedsExportRef.current =
     false;
 
+clearLimitedPreviewRuntimeState();    
+
         /*
          * 重新載入 GitHub HTML：
          *
@@ -3246,17 +4213,52 @@ sessionNeedsExportRef.current =
  * 已登入時執行登出確認。
  */
 const handleAuthClick = () => {
-    if (isAdmin || isEditor) {
+    if (
+        isAdmin ||
+        isEditor
+    ) {
         handleLogout();
         return;
     }
 
-    setShowLoginModal(true);
-    setLoginError(false);
+
+    /*
+     * Viewer 正在預覽時，
+     * 登入前先退出預覽。
+     */
+    if (
+        previewDataModeRef.current
+    ) {
+        const confirmed =
+            window.confirm(
+                '登入前將先退出預覽並清除目前預覽資料，是否繼續？'
+            );
+
+
+        if (!confirmed) {
+            return;
+        }
+
+
+        clearViewerPreviewData();
+    }
+
+
+    setShowLoginModal(
+        true
+    );
+
+    setLoginError(
+        false
+    );
+
     setLoginErrorMessage(
         '密碼錯誤，請重新輸入'
     );
-    setPasswordInput('');
+
+    setPasswordInput(
+        ''
+    );
 };
 
 const addNewLaw = () => {
@@ -3464,7 +4466,7 @@ const handleAllSync = async () => {
             result = JSON.parse(responseText);
         } catch (parseError) {
             throw new Error(
-                `後端未回傳有效 JSON。HTTP ${response.status}：` +
+                `後端未回傳有效資料內容。HTTP ${response.status}：` +
                 responseText.slice(0, 200)
             );
         }
@@ -4475,6 +5477,228 @@ setDraftEditorEnabled(
     </div>
 )}
 
+{/* 資料匯出 Modal */}
+{showDataExportModal && (
+    <div
+        className="data-export-modal fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4"
+        onClick={closeDataExportModal}
+    >
+        <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden fade-in max-h-[88vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+        >
+            <div className="p-5 relative">
+
+                {/* 右上角關閉 */}
+                <button
+                    type="button"
+                    onClick={closeDataExportModal}
+                    className="absolute right-4 top-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition flex items-center justify-center"
+                    title="關閉"
+                >
+                    <i className="fas fa-xmark text-sm"></i>
+                </button>
+
+
+                {/* 第一頁：選擇用途 */}
+                {dataExportView === 'choice' && (
+                    <>
+                        <div className="flex flex-col items-center text-center mb-4 px-8">
+                            <div className="bg-indigo-50 p-2 rounded-full mb-2">
+                                <i className="fas fa-file-export text-indigo-600 text-xl w-6 h-6 flex items-center justify-center"></i>
+                            </div>
+
+                            <h2 className="text-lg font-black text-slate-800">
+                                資料匯出
+                            </h2>
+
+                            <p className="text-[10px] tracking-[0.18em] font-black text-slate-400 mt-0.5">
+                                DATA EXPORT
+                            </p>
+
+                            <p className="text-xs text-slate-500 mt-2">
+                                請選擇這份資料的使用方式
+                            </p>
+                        </div>
+
+
+                        <div className="grid grid-cols-2 gap-3">
+
+                            {/* 正式資料 */}
+                            <button
+                                type="button"
+                                onClick={exportFormalDataFromModal}
+                                className="min-h-[124px] rounded-xl border border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50 hover:border-indigo-200 transition p-3 flex flex-col items-center justify-center text-center"
+                            >
+                                <div className="w-9 h-9 rounded-full bg-white border border-indigo-100 flex items-center justify-center mb-2 shadow-sm">
+                                    <i className="fas fa-database text-indigo-600"></i>
+                                </div>
+
+                                <span className="text-sm font-black text-slate-800">
+                                    正式資料
+                                </span>
+
+                                <span className="text-[10px] font-black text-indigo-600 mt-0.5">
+                                    FORMAL DATA
+                                </span>
+
+                                <span className="text-[11px] text-slate-500 leading-snug mt-2">
+                                    供管理者／使用者<br />
+                                    備份與接續編輯
+                                </span>
+                            </button>
+
+
+                            {/* 預覽資料 */}
+                            <button
+                                type="button"
+                                onClick={showPreviewExportSettings}
+                                className="min-h-[124px] rounded-xl border border-sky-100 bg-sky-50/60 hover:bg-sky-50 hover:border-sky-200 transition p-3 flex flex-col items-center justify-center text-center"
+                            >
+                                <div className="w-9 h-9 rounded-full bg-white border border-sky-100 flex items-center justify-center mb-2 shadow-sm">
+                                    <i className="fas fa-eye text-sky-600"></i>
+                                </div>
+
+                                <span className="text-sm font-black text-slate-800">
+                                    預覽資料
+                                </span>
+
+                                <span className="text-[10px] font-black text-sky-600 mt-0.5">
+                                    LIMITED PREVIEW
+                                </span>
+
+                                <span className="text-[11px] text-slate-500 leading-snug mt-2">
+                                    供預覽者限時查看<br />
+                                    不可正式編輯
+                                </span>
+                            </button>
+
+                        </div>
+
+
+                        <p className="text-[11px] text-slate-400 leading-snug text-center mt-3">
+                            正式資料維持原有檔案格式；預覽資料另設有效期限與開啟次數。
+                        </p>
+
+
+                        <button
+                            type="button"
+                            onClick={closeDataExportModal}
+                            className="w-full mt-3 bg-slate-100 text-slate-600 py-2 rounded-lg font-bold hover:bg-slate-200 transition text-xs"
+                        >
+                            取消
+                        </button>
+                    </>
+                )}
+
+
+                {/* 第二頁：預覽設定 */}
+                {dataExportView === 'preview' && (
+                    <>
+                        <div className="flex flex-col items-center text-center mb-4 px-8">
+                            <div className="bg-sky-50 p-2 rounded-full mb-2">
+                                <i className="fas fa-clock text-sky-600 text-xl w-6 h-6 flex items-center justify-center"></i>
+                            </div>
+
+                            <h2 className="text-lg font-black text-slate-800">
+                                預覽資料設定
+                            </h2>
+
+                            <p className="text-[10px] tracking-[0.18em] font-black text-slate-400 mt-0.5">
+                                LIMITED PREVIEW
+                            </p>
+
+                            <p className="text-xs text-slate-500 mt-2">
+                                設定有效期限與可開啟次數
+                            </p>
+                        </div>
+
+
+                        <div className="space-y-3">
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">
+                                    有效期限
+                                </label>
+
+                                <select
+                                    value={previewExpiryHours}
+                                    onChange={(e) =>
+                                        setPreviewExpiryHours(
+                                            Number(e.target.value)
+                                        )
+                                    }
+                                    className="w-full h-10 px-3 bg-slate-100 border-none rounded-lg focus:ring-2 focus:ring-sky-500 outline-none text-sm font-bold text-slate-700"
+                                >
+                                    <option value={1}>1 小時</option>
+                                    <option value={8}>8 小時</option>
+                                    <option value={24}>24 小時</option>
+                                    <option value={72}>3 天</option>
+                                    <option value={168}>7 天</option>
+                                </select>
+                            </div>
+
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">
+                                    可開啟次數
+                                </label>
+
+                                <select
+                                    value={previewMaxViews}
+                                    onChange={(e) =>
+                                        setPreviewMaxViews(
+                                            Number(e.target.value)
+                                        )
+                                    }
+                                    className="w-full h-10 px-3 bg-slate-100 border-none rounded-lg focus:ring-2 focus:ring-sky-500 outline-none text-sm font-bold text-slate-700"
+                                >
+                                    <option value={1}>1 次</option>
+                                    <option value={2}>2 次</option>
+                                    <option value={3}>3 次</option>
+                                    <option value={5}>5 次</option>
+                                </select>
+                            </div>
+
+
+                            <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
+                                <div className="flex items-start gap-2">
+                                    <i className="fas fa-shield-halved text-amber-600 mt-0.5"></i>
+
+                                    <p className="text-[11px] leading-snug text-amber-700 font-medium">
+                                        預覽檔案僅供檢視，不能載入正式工作區；期限到達時，已開啟內容也會自動清除。
+                                    </p>
+                                </div>
+                            </div>
+
+
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={backToDataExportChoice}
+                                    className="flex-1 bg-slate-100 text-slate-600 py-2 rounded-lg font-bold hover:bg-slate-200 transition text-xs"
+                                >
+                                    返回
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={exportPreviewDatabase}
+                                    className="flex-1 bg-sky-600 text-white py-2 rounded-lg font-bold hover:bg-sky-700 transition text-xs shadow-md shadow-sky-100"
+                                >
+                                    匯出預覽
+                                </button>
+                            </div>
+
+                        </div>
+                    </>
+                )}
+
+            </div>
+        </div>
+    </div>
+)}
+
                     <header className="bg-slate-900 border-b border-slate-800 px-4 py-4 sm:px-10 sm:py-6 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 sm:gap-0 sticky top-0 z-40 shadow-xl">
                         <div className="flex items-center gap-3 sm:gap-6">
                             <div className="bg-blue-600 w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 shrink-0">
@@ -4700,21 +5924,72 @@ setDraftEditorEnabled(
 )}
 
 {canExportBackupData() && (
-    <button 
-        onClick={exportDatabase}
+    <button
+        type="button"
+        onClick={openDataExportModal}
+        title="匯出正式資料或限時／限次預覽檔案"
         className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
     >
-        <i className="fas fa-share-nodes"></i> 匯出資料
+        <i className="fas fa-share-nodes"></i>
+        匯出資料
     </button>
 )}
 
+
 {(canImportData() || canLoadPreviewData()) && (
-    <button 
-        onClick={() => fileInputRef.current.click()}
+    <button
+        type="button"
+        onClick={() => {
+
+            /*
+             * Viewer 已在預覽模式：
+             * 同一顆按鈕改成退出預覽。
+             */
+            if (
+                !canImportData() &&
+                isPreviewDataMode
+            ) {
+                exitPreviewMode();
+                return;
+            }
+
+            fileInputRef.current?.click();
+        }}
+        title={
+            isAdmin
+                ? '匯入正式資料檔案'
+
+                : isEditor
+                    ? '載入正式資料檔案'
+
+                    : isPreviewDataMode
+                        ? '退出目前預覽資料'
+
+                        : '載入限時／限次預覽檔案'
+        }
         className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
     >
-        <i className="fas fa-file-import"></i>
-        {isAdmin ? '匯入資料' : isEditor ? '載入資料' : '載入預覽'}
+        <i
+            className={
+                !canImportData() &&
+                isPreviewDataMode
+                    ? 'fas fa-eye-slash'
+                    : 'fas fa-file-import'
+            }
+        ></i>
+
+        {
+            isAdmin
+                ? '匯入資料'
+
+                : isEditor
+                    ? '載入資料'
+
+                    : isPreviewDataMode
+                        ? '退出預覽'
+
+                        : '載入預覽'
+        }
     </button>
 )}
 </div>
