@@ -3577,19 +3577,7 @@ const importDatabase = (
 
 
                 alert(
-                    '預覽資料載入成功！\n\n' +
-                    `本裝置已使用 ${previewCheck.usedCount} / ${previewCheck.maxViews} 次\n` +
-                    `有效至：${
-                        new Date(
-                            importedData.expiresAt
-                        ).toLocaleString(
-                            'zh-TW',
-                            {
-                                hour12:
-                                    false
-                            }
-                        )
-                    }`
+                    '預覽資料載入成功！' 
                 );
 
 
