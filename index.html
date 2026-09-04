@@ -566,7 +566,116 @@ header .mobile-hide.sm\:block {
             padding-bottom: 6px !important;
             border-radius: 11px !important;
             font-size: 11px !important;
-        }    
+        } 
+        
+        /*
+ * 法規系統 Header：
+ * 手機直式依照目前角色排列功能按鈕。
+ *
+ * 不影響桌機與手機橫式。
+ */
+.header-action-buttons {
+    display: grid !important;
+
+    grid-template-columns:
+        minmax(0, 1fr)
+        minmax(0, 1fr) !important;
+
+    width: 100% !important;
+    gap: 7px !important;
+}
+
+/*
+ * 手機直式全部按鈕以格線寬度為準，
+ * 避免部分按鈕過長或過短。
+ */
+.header-action-buttons > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    white-space: nowrap;
+}
+
+/* =========================================
+   預覽者
+   第一排：匯出總表／權限登入
+   第二排：雲端中心
+========================================= */
+
+.header-actions-viewer .header-export-btn {
+    order: 1;
+    grid-column: auto !important;
+}
+
+.header-actions-viewer .header-auth-btn {
+    order: 2;
+    grid-column: auto !important;
+}
+
+.header-actions-viewer .header-cloud-btn {
+    order: 3;
+    grid-column: 1 / -1 !important;
+}
+
+
+/* =========================================
+   使用者
+   第一排：智能同步／匯出總表
+   第二排：雲端中心／登出系統
+========================================= */
+
+.header-actions-editor .header-sync-btn {
+    order: 1;
+    grid-column: auto !important;
+}
+
+.header-actions-editor .header-export-btn {
+    order: 2;
+    grid-column: auto !important;
+}
+
+.header-actions-editor .header-cloud-btn {
+    order: 3;
+    grid-column: auto !important;
+}
+
+.header-actions-editor .header-auth-btn {
+    order: 4;
+    grid-column: auto !important;
+}
+
+
+/* =========================================
+   管理者
+   第一排：智能同步／匯出總表
+   第二排：登出系統／權限設定
+   第三排：雲端中心
+========================================= */
+
+.header-actions-admin .header-sync-btn {
+    order: 1;
+    grid-column: auto !important;
+}
+
+.header-actions-admin .header-export-btn {
+    order: 2;
+    grid-column: auto !important;
+}
+
+.header-actions-admin .header-auth-btn {
+    order: 3;
+    grid-column: auto !important;
+}
+
+.header-actions-admin .header-settings-btn {
+    order: 4;
+    grid-column: auto !important;
+}
+
+.header-actions-admin .header-cloud-btn {
+    order: 5;
+    grid-column: 1 / -1 !important;
+}
+
     }
 
     /*
@@ -19093,7 +19202,23 @@ setDraftEditorEnabled(
     </span>
 </div>
                             
-<div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+<div
+    className={`
+        header-action-buttons
+        grid grid-cols-2
+        sm:flex sm:flex-row
+        gap-2 sm:gap-3
+        w-full sm:w-auto
+
+        ${
+            isAdmin
+                ? 'header-actions-admin'
+                : isEditor
+                    ? 'header-actions-editor'
+                    : 'header-actions-viewer'
+        }
+    `}
+>
 
 <button
     type="button"
@@ -19101,6 +19226,7 @@ setDraftEditorEnabled(
         openCloudCenterModal
     }
     className="
+        header-cloud-btn
         col-span-2 sm:col-auto
         flex items-center justify-center
         w-full sm:w-40
@@ -19129,7 +19255,7 @@ setDraftEditorEnabled(
 {canUseSmartSync() && (
     <button
         onClick={handleAllSync}
-        className="flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-emerald-700 transition-all shadow-lg border-b-4 border-emerald-900"
+        className="header-sync-btn flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-emerald-700 transition-all shadow-lg border-b-4 border-emerald-900"
     >
         <i className="fas fa-rotate"></i> 智能同步
     </button>
@@ -19138,7 +19264,7 @@ setDraftEditorEnabled(
 {canExportReport() && (
     <button
         onClick={handleExport}
-        className="flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all shadow-lg border-b-4 border-slate-950"
+        className="header-export-btn flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all shadow-lg border-b-4 border-slate-950"
     >
         <i className="fas fa-file-export"></i> 匯出總表
     </button>
@@ -19147,6 +19273,7 @@ setDraftEditorEnabled(
 <button
     onClick={handleAuthClick}
     className={`
+        header-auth-btn
         flex items-center justify-center
         w-full sm:w-40
         gap-1.5 sm:gap-3
@@ -19208,7 +19335,7 @@ setDraftEditorEnabled(
     setNewAdminPasswordInput('');
     setNewEditorPasswordInput('');
 }}
-        className="flex items-center justify-center w-full sm:w-12 gap-1.5 sm:gap-0 py-2 sm:py-2.5 bg-slate-700 text-cyan-300 rounded-xl text-xs sm:text-sm font-black hover:bg-slate-600 transition-all shadow-lg border-b-4 border-slate-900"
+        className="header-settings-btn flex items-center justify-center w-full sm:w-12 gap-1.5 sm:gap-0 py-2 sm:py-2.5 bg-slate-700 text-cyan-300 rounded-xl text-xs sm:text-sm font-black hover:bg-slate-600 transition-all shadow-lg border-b-4 border-slate-900"
         title="權限與密碼設定"
     >
         <i className="fas fa-gear"></i>
