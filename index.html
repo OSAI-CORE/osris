@@ -1403,7 +1403,75 @@ footer,
             translateX(-50%)
             translateY(-2px) !important;
     }
-}        
+}
+
+/* =========================================================
+   系統一般功能按鈕 Tooltip
+   視覺與雲端中心一致。
+
+   注意：
+   此 class 只建立 Tooltip，
+   不修改按鈕本身的背景、外框、尺寸或 padding。
+
+   僅桌機滑鼠裝置顯示，
+   手機觸控不顯示。
+========================================================= */
+.system-tooltip-btn {
+    position: relative;
+}
+
+@media (hover: hover) and (pointer: fine) {
+
+    .system-tooltip-btn::after {
+        content: attr(data-tooltip);
+
+        position: absolute;
+        z-index: 200;
+
+        left: 50%;
+        top: calc(100% + 6px);
+
+        transform:
+            translateX(-50%)
+            translateY(-2px);
+
+        padding: 4px 7px;
+
+        border-radius: 6px;
+
+        background: rgba(15, 23, 42, 0.94);
+        color: #ffffff;
+
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.2;
+
+        white-space: nowrap;
+
+        opacity: 0;
+        visibility: hidden;
+
+        pointer-events: none;
+
+        transition:
+            opacity 0.14s ease,
+            transform 0.14s ease,
+            visibility 0.14s ease;
+
+        box-shadow:
+            0 6px 16px rgba(15, 23, 42, 0.18);
+    }
+
+    .system-tooltip-btn:hover::after {
+        opacity: 1;
+        visibility: visible;
+
+        transform:
+            translateX(-50%)
+            translateY(0);
+    }
+
+}
 
     </style>
 </head>
@@ -19243,7 +19311,6 @@ setDraftEditorEnabled(
         border-b-4
         border-sky-900
     "
-    title="開啟雲端中心"
 >
     <i className="fas fa-cloud"></i>
 
@@ -19264,7 +19331,7 @@ setDraftEditorEnabled(
 {canExportReport() && (
     <button
         onClick={handleExport}
-        className="header-export-btn flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all shadow-lg border-b-4 border-slate-950"
+        className="header-export-btn flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all"
     >
         <i className="fas fa-file-export"></i> 匯出總表
     </button>
@@ -19276,34 +19343,20 @@ setDraftEditorEnabled(
         header-auth-btn
         flex items-center justify-center
         w-full sm:w-40
-        gap-1.5 sm:gap-3
+        gap-2 sm:gap-3
         py-2 sm:py-2.5
+        bg-slate-700
+        hover:bg-slate-800
         text-white
         rounded-xl
         text-xs sm:text-sm
         font-black
         transition-all
-        shadow-lg
-        border-b-4
 
         ${
             isEditor && !isAdmin
                 ? 'col-span-2 sm:col-auto'
                 : ''
-        }
-
-        ${
-            isAdmin || isEditor
-                ? (
-                    'bg-rose-600 ' +
-                    'hover:bg-rose-700 ' +
-                    'border-rose-900'
-                )
-                : (
-                    'bg-slate-700 ' +
-                    'hover:bg-slate-600 ' +
-                    'border-slate-900'
-                )
         }
     `}
 >
@@ -19323,7 +19376,7 @@ setDraftEditorEnabled(
 </button>
 
 {isAdmin && (
-    <button
+<button
 onClick={() => {
 setDraftEditorEnabled(
     DEFAULT_EDITOR_ENABLED
@@ -19335,9 +19388,8 @@ setDraftEditorEnabled(
     setNewAdminPasswordInput('');
     setNewEditorPasswordInput('');
 }}
-        className="header-settings-btn flex items-center justify-center w-full sm:w-12 gap-1.5 sm:gap-0 py-2 sm:py-2.5 bg-slate-700 text-cyan-300 rounded-xl text-xs sm:text-sm font-black hover:bg-slate-600 transition-all shadow-lg border-b-4 border-slate-900"
-        title="權限與密碼設定"
-    >
+    className="header-settings-btn flex items-center justify-center w-full sm:w-12 gap-1.5 sm:gap-0 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all"
+>
         <i className="fas fa-gear"></i>
         <span className="sm:hidden">權限設定</span>
     </button>
@@ -19409,7 +19461,14 @@ setDraftEditorEnabled(
                     ? '切換為監控清單檢視模式'
                     : '進入監控清單編輯模式'
             }
-            className={`edit-toggle-icon-btn ${
+
+data-tooltip={
+    isMonitorEditMode
+        ? '完成編輯'
+        : '編輯'
+}
+
+            className={`system-tooltip-btn edit-toggle-icon-btn ${
                 isMonitorEditMode
                     ? 'is-editing'
                     : 'is-view'
@@ -19424,34 +19483,34 @@ setDraftEditorEnabled(
             ></i>
         </button>
 
-        <button
-            type="button"
-            onClick={saveMonitorEdits}
-            aria-label="儲存法規監控清單"
-            className="save-data-icon-btn"
-        >
+<button
+    type="button"
+    onClick={saveMonitorEdits}
+    aria-label="儲存法規監控清單"
+    data-tooltip="儲存"
+    className="system-tooltip-btn save-data-icon-btn"
+>
             <i className="fas fa-floppy-disk"></i>
         </button>
     </>
 )}
 
 {isAdmin && (
-    <button 
-        onClick={handleAdminSyncIdentification}
-        title="同步鑑別"
-        className="w-10 h-10 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all shadow-md flex items-center justify-center"
-    >
+<button 
+    onClick={handleAdminSyncIdentification}
+    data-tooltip="同步鑑別"
+    className="system-tooltip-btn w-10 h-10 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all shadow-md flex items-center justify-center"
+>
         <i className="fas fa-arrows-rotate"></i>
     </button>
 )}
 
 {canExportBackupData() && (
-    <button
-        type="button"
-        onClick={openDataExportModal}
-        title="匯出正式資料或限時／限次預覽檔案"
-        className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
-    >
+<button
+    type="button"
+    onClick={openDataExportModal}
+    className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
+>
         <i className="fas fa-share-nodes"></i>
         匯出資料
     </button>
@@ -19477,19 +19536,7 @@ setDraftEditorEnabled(
 
             fileInputRef.current?.click();
         }}
-        title={
-            isAdmin
-                ? '匯入正式資料檔案'
-
-                : isEditor
-                    ? '載入正式資料檔案'
-
-                    : isPreviewDataMode
-                        ? '退出目前預覽資料'
-
-                        : '載入限時／限次預覽檔案'
-        }
-        className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
+className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
     >
         <i
             className={
@@ -19695,7 +19742,7 @@ setDraftEditorEnabled(
 {canConfirmIdentification() && (
     <button
         onClick={() => handleSingleSync(law.id)}
-        className={`w-full ${
+        className={`system-tooltip-btn w-full ${
             isAdmin ? 'lg:w-32' : 'lg:w-36'
         } px-3 sm:px-4 py-3 sm:py-3 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm shadow-xl transition-all duration-200 transform active:scale-95 flex items-center justify-center ${
             isLawDiff
@@ -19703,7 +19750,11 @@ setDraftEditorEnabled(
                 : 'bg-slate-300 shadow-none cursor-default text-slate-500'
         }`}
         disabled={!isLawDiff}
-        title={isLawDiff ? '人工確認完成本次鑑別並更新本地日期' : '目前無法規異動，已為鑑別完成狀態'}
+        data-tooltip={
+    isLawDiff
+        ? '完成鑑別'
+        : '目前已完成鑑別'
+}
     >
         完成鑑別
     </button>
@@ -19744,20 +19795,25 @@ setDraftEditorEnabled(
 
     {canUseWorkbenchEditControls() && (
         <div className="workbench-mobile-edit-controls">
-            <button
-                type="button"
-                onClick={toggleWorkbenchEditMode}
-                aria-label={
-                    isWorkbenchEditMode
-                        ? '切換為鑑別工作台檢視模式'
-                        : '進入鑑別工作台編輯模式'
-                }
-                className={`edit-toggle-icon-btn ${
-                    isWorkbenchEditMode
-                        ? 'is-editing'
-                        : 'is-view'
-                }`}
-            >
+<button
+    type="button"
+    onClick={toggleWorkbenchEditMode}
+    aria-label={
+        isWorkbenchEditMode
+            ? '切換為鑑別工作台檢視模式'
+            : '進入鑑別工作台編輯模式'
+    }
+    data-tooltip={
+        isWorkbenchEditMode
+            ? '完成編輯'
+            : '編輯'
+    }
+    className={`system-tooltip-btn edit-toggle-icon-btn ${
+        isWorkbenchEditMode
+            ? 'is-editing'
+            : 'is-view'
+    }`}
+>
                 <i
                     className={`fas ${
                         isWorkbenchEditMode
@@ -19767,12 +19823,13 @@ setDraftEditorEnabled(
                 ></i>
             </button>
 
-            <button
-                type="button"
-                onClick={saveWorkbenchEdits}
-                aria-label="儲存法規異動內容"
-                className="save-data-icon-btn"
-            >
+<button
+    type="button"
+    onClick={saveWorkbenchEdits}
+    aria-label="儲存法規異動內容"
+    data-tooltip="儲存"
+    className="system-tooltip-btn save-data-icon-btn"
+>
                 <i className="fas fa-floppy-disk"></i>
             </button>
         </div>
@@ -19819,20 +19876,25 @@ setDraftEditorEnabled(
     {/* 桌機與手機橫式：編輯、儲存排在列印報告後面 */}
     {canUseWorkbenchEditControls() && (
         <div className="workbench-standard-edit-controls">
-            <button
-                type="button"
-                onClick={toggleWorkbenchEditMode}
-                aria-label={
-                    isWorkbenchEditMode
-                        ? '切換為鑑別工作台檢視模式'
-                        : '進入鑑別工作台編輯模式'
-                }
-                className={`edit-toggle-icon-btn ${
-                    isWorkbenchEditMode
-                        ? 'is-editing'
-                        : 'is-view'
-                }`}
-            >
+<button
+    type="button"
+    onClick={toggleWorkbenchEditMode}
+    aria-label={
+        isWorkbenchEditMode
+            ? '切換為鑑別工作台檢視模式'
+            : '進入鑑別工作台編輯模式'
+    }
+    data-tooltip={
+        isWorkbenchEditMode
+            ? '完成編輯'
+            : '編輯'
+    }
+    className={`system-tooltip-btn edit-toggle-icon-btn ${
+        isWorkbenchEditMode
+            ? 'is-editing'
+            : 'is-view'
+    }`}
+>
                 <i
                     className={`fas ${
                         isWorkbenchEditMode
@@ -19842,12 +19904,13 @@ setDraftEditorEnabled(
                 ></i>
             </button>
 
-            <button
-                type="button"
-                onClick={saveWorkbenchEdits}
-                aria-label="儲存法規異動內容"
-                className="save-data-icon-btn"
-            >
+<button
+    type="button"
+    onClick={saveWorkbenchEdits}
+    aria-label="儲存法規異動內容"
+    data-tooltip="儲存"
+    className="system-tooltip-btn save-data-icon-btn"
+>
                 <i className="fas fa-floppy-disk"></i>
             </button>
         </div>
@@ -19868,18 +19931,13 @@ setDraftEditorEnabled(
                     }
                 );
             }}
-            disabled={selectedLawCheckedToday}
-            className={`workbench-action-btn font-black shadow-xl transition-all active:scale-95 ${
-                selectedLawCheckedToday
-                    ? 'bg-slate-300 text-slate-500 shadow-none cursor-default'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-            title={
-                selectedLawCheckedToday
-                    ? '今日已完成鑑別'
-                    : '人工確認完成本次鑑別並更新本地日期'
-            }
-        >
+disabled={selectedLawCheckedToday}
+className={`workbench-action-btn font-black shadow-xl transition-all active:scale-95 ${
+    selectedLawCheckedToday
+        ? 'bg-slate-300 text-slate-500 shadow-none cursor-default'
+        : 'bg-blue-600 text-white hover:bg-blue-700'
+}`}
+>
             {selectedLawCheckedToday
                 ? '今日已鑑別'
                 : '完成鑑別'}
