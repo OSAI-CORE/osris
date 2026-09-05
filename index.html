@@ -19345,13 +19345,17 @@ setDraftEditorEnabled(
         w-full sm:w-40
         gap-2 sm:gap-3
         py-2 sm:py-2.5
-        bg-slate-700
-        hover:bg-slate-800
         text-white
         rounded-xl
         text-xs sm:text-sm
         font-black
         transition-all
+
+        ${
+            isAdmin || isEditor
+                ? 'bg-rose-600 hover:bg-rose-700'
+                : 'bg-slate-700 hover:bg-slate-800'
+        }
 
         ${
             isEditor && !isAdmin
