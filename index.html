@@ -4,18 +4,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>職業安全法規鑑別系統</title>
+
+<!-- 外部 CDN：提前建立連線 -->
+<link
+    rel="preconnect"
+    href="https://cdn.jsdelivr.net"
+    crossorigin
+>
+
+<link
+    rel="preconnect"
+    href="https://cdnjs.cloudflare.com"
+    crossorigin
+>
+
+<!-- Font Awesome：優先載入 Solid 圖示字型 -->
+<link
+    rel="preload"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-solid-900.woff2"
+    as="font"
+    type="font/woff2"
+    crossorigin
+>
+
 <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+<script>
+(function () {
+
+    function showHeaderActionButtons() {
+        document.documentElement.classList.add(
+            'fa-icons-ready'
+        );
+    }
+
+    /*
+     * 等待 Font Awesome Solid 字型真正可用後，
+     * 再一次顯示 Header 功能按鈕。
+     */
+    if (
+        document.fonts &&
+        document.fonts.load
+    ) {
+
+        document.fonts
+            .load(
+                '900 1em "Font Awesome 6 Free"'
+            )
+            .then(
+                showHeaderActionButtons
+            )
+            .catch(
+                showHeaderActionButtons
+            );
+
+        /*
+         * 防呆：
+         * 即使 Font CDN 或 Font API 發生異常，
+         * 也不讓 Header 功能按鈕永久消失。
+         */
+        setTimeout(
+            showHeaderActionButtons,
+            1500
+        );
+
+    } else {
+
+        window.addEventListener(
+            'load',
+            showHeaderActionButtons,
+            { once: true }
+        );
+    }
+
+})();
+</script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
         body {
             font-family: 'Noto Sans TC', sans-serif;
             background-color: #f8fafc;
         }
+
+/* =========================================================
+   Header 功能按鈕首次顯示最佳化
+
+   Font Awesome Solid 圖示尚未完成載入前，
+   先保留按鈕版面但暫不顯示，
+   避免文字先出現、圖示稍後補上的視覺斷層。
+========================================================= */
+.header-action-buttons {
+    visibility: hidden;
+}
+
+html.fa-icons-ready .header-action-buttons {
+    visibility: visible;
+}
+
         @keyframes scan {
             0% { transform: translateY(-100%); opacity: 0; }
             50% { opacity: 0.5; }
@@ -18863,9 +18954,6 @@ className="
     </p>
 )}
 
-                <p className="text-[10px] text-center text-slate-400 leading-relaxed">
-                    未登入狀態可使用匯出總表、載入預覽、查看法規清單、比對詳情與列印報告；智能同步、條文新增與編輯、正式載入及資料匯出需登入權限。
-                </p>
             </div>
         </div>
     </div>
