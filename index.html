@@ -10311,6 +10311,158 @@ return {
 };
 };
 
+/*
+ * 複製管理圖卡中的 Preview ID。
+ *
+ * HTTPS：
+ * 優先使用 Clipboard API。
+ *
+ * file:// 或 Clipboard API 不可使用時：
+ * 改用暫時 textarea 相容模式。
+ */
+const copyCloudPreviewId =
+    async (
+        previewIdValue,
+        button
+    ) => {
+
+    const previewId =
+        String(
+            previewIdValue ||
+            ''
+        ).trim();
+
+    /*
+     * 點擊後先隱藏 Tooltip，
+     * 避免「複製 ID」提示框留在畫面上。
+     */
+    button?.classList.add(
+        'cloud-tooltip-suppressed'
+    );
+
+    button?.blur();
+
+    if (!previewId) {
+        showSystemToast(
+            '找不到可複製的 Preview ID。',
+            'error'
+        );
+
+        return;
+    }
+
+    let copied =
+        false;
+
+    /*
+     * 正式 HTTPS 網站優先使用瀏覽器 Clipboard API。
+     */
+    if (
+        window.isSecureContext &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText ===
+            'function'
+    ) {
+        try {
+            await navigator.clipboard.writeText(
+                previewId
+            );
+
+            copied =
+                true;
+
+        } catch (error) {
+            console.warn(
+                'Clipboard API 複製失敗，改用相容模式：',
+                error
+            );
+        }
+    }
+
+    /*
+     * 本機 file://、舊瀏覽器或 Clipboard API
+     * 無法使用時的相容處理。
+     */
+    if (!copied) {
+        const helper =
+            document.createElement(
+                'textarea'
+            );
+
+        helper.value =
+            previewId;
+
+        helper.setAttribute(
+            'readonly',
+            ''
+        );
+
+        helper.style.position =
+            'fixed';
+
+        helper.style.left =
+            '-9999px';
+
+        helper.style.top =
+            '0';
+
+        helper.style.opacity =
+            '0';
+
+        helper.style.pointerEvents =
+            'none';
+
+        try {
+            document.body.appendChild(
+                helper
+            );
+
+            try {
+                helper.focus({
+                    preventScroll:
+                        true
+                });
+
+            } catch (_) {
+                helper.focus();
+            }
+
+            helper.select();
+
+            helper.setSelectionRange(
+                0,
+                helper.value.length
+            );
+
+            copied =
+                document.execCommand(
+                    'copy'
+                ) === true;
+
+        } catch (error) {
+            console.warn(
+                '相容模式複製 Preview ID 失敗：',
+                error
+            );
+
+        } finally {
+            helper.remove();
+        }
+    }
+
+    if (copied) {
+        showSystemToast(
+            'Preview ID 已複製。',
+            'success'
+        );
+
+    } else {
+        showSystemToast(
+            '無法自動複製 Preview ID，請手動選取複製。',
+            'error'
+        );
+    }
+};
 
 /*
  * 正式讀取管理清單。
@@ -16000,12 +16152,70 @@ aria-label="刪除"
     )}
 </div>
 
-{/* Preview ID 與目前狀態 */}
+{/* Preview ID、複製按鈕與目前狀態 */}
 <div className="mt-1.5 pl-6 min-w-0 flex items-center gap-2">
 
     <div className="min-w-0 flex-1 truncate text-[9px] font-mono text-slate-400">
         {previewId}
     </div>
+
+    {/* 複製 Preview ID */}
+    <button
+        type="button"
+        onClick={(event) => {
+            copyCloudPreviewId(
+                previewId,
+                event.currentTarget
+            );
+        }}
+        onPointerEnter={(event) => {
+            event.currentTarget
+                .classList
+                .remove(
+                    'cloud-tooltip-suppressed'
+                );
+        }}
+className="
+    cloud-tooltip-btn
+    shrink-0
+    w-6 h-6
+    rounded-md
+    text-sky-600
+    hover:text-sky-700
+    transition
+    flex items-center
+    justify-center
+    focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-sky-300
+"
+        data-tooltip="複製 ID"
+        aria-label="複製 Preview ID"
+    >
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-3.5 h-3.5"
+            aria-hidden="true"
+        >
+            <rect
+                width="14"
+                height="14"
+                x="8"
+                y="8"
+                rx="2"
+                ry="2"
+            ></rect>
+
+            <path
+                d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+            ></path>
+        </svg>
+    </button>
 
     <div className="shrink-0 w-[58px] flex items-center justify-end">
         <span
