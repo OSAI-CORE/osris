@@ -1418,6 +1418,126 @@ footer,
         .print-header { display: none; }
 
 /* =========================================================
+   雲端中心固定框架與統一捲動機制
+========================================================= */
+
+.cloud-center-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.cloud-center-main-header {
+    flex: 0 0 auto;
+}
+
+.cloud-center-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.cloud-center-permission-bar {
+    flex: 0 0 auto;
+}
+
+/*
+ * 第一層首頁內容不足時不捲動；
+ * 畫面高度不足時由首頁內容區自行捲動。
+ */
+.cloud-center-home-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/*
+ * 發布新預覽：
+ * 保留 2px，避免輸入框 focus ring 被裁切。
+ */
+.cloud-center-publish-view {
+    flex: 1 1 auto;
+    min-height: 0;
+
+    padding: 2px;
+
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+
+    scrollbar-width: thin;
+    scrollbar-color:
+        #cbd5e1
+        #f1f5f9;
+}
+
+/*
+ * 三個清單型第二層頁面。
+ */
+.cloud-center-list-view {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/*
+ * 只有下方圖卡區可以上下捲動。
+ */
+.cloud-center-scroll-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+
+    scrollbar-width: thin;
+    scrollbar-color:
+        #cbd5e1
+        #f1f5f9;
+}
+
+.cloud-center-publish-view::-webkit-scrollbar,
+.cloud-center-scroll-list::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.cloud-center-publish-view::-webkit-scrollbar-track,
+.cloud-center-scroll-list::-webkit-scrollbar-track {
+    background:
+        #f1f5f9;
+}
+
+.cloud-center-publish-view::-webkit-scrollbar-thumb,
+.cloud-center-scroll-list::-webkit-scrollbar-thumb {
+    background:
+        #cbd5e1;
+
+    border-radius:
+        4px;
+}
+
+.cloud-center-publish-view::-webkit-scrollbar-thumb:hover,
+.cloud-center-scroll-list::-webkit-scrollbar-thumb:hover {
+    background:
+        #94a3b8;
+}
+
+.cloud-center-footer-button {
+    flex: 0 0 auto;
+}
+
+/* =========================================================
    雲端中心：純圖示功能按鈕 Tooltip
    僅桌機滑鼠裝置顯示，手機觸控不顯示。
 ========================================================= */
@@ -13786,22 +13906,23 @@ const selectedLawCheckedToday =
             closeCloudCenterModal();
         }}
     >
-        <div
-            className="
-                bg-white
-                w-full max-w-sm
-                mx-3
-                rounded-2xl
-                shadow-2xl
-                border border-slate-200
-                overflow-y-auto
-                max-h-[calc(100svh-24px)]
-                scale-in-center
-            "
-        >
+<div
+    className="
+        cloud-center-panel
+        bg-white
+        w-full max-w-sm
+        mx-3
+        rounded-2xl
+        shadow-2xl
+        border border-slate-200
+        max-h-[calc(100svh-24px)]
+        scale-in-center
+    "
+>
             {/* Header */}
             <div
                 className="
+                    cloud-center-main-header
                     relative
                     bg-gradient-to-r
                     from-slate-900
@@ -14068,13 +14189,14 @@ disabled={
                 </p>
             </div>
 
-            {/* Body */}
-            <div className="px-5 pt-2 pb-5">
+{/* Body */}
+<div className="cloud-center-body px-5 pt-2 pb-5">
                 {/* 目前角色 */}
                 <div
-                    className="
-                        flex items-center justify-between
-                        gap-3 mb-3
+className="
+    cloud-center-permission-bar
+    flex items-center justify-between
+    gap-3 mb-3
                         bg-slate-50
                         border border-slate-200
                         rounded-xl
@@ -14181,7 +14303,7 @@ disabled={
 
                 {/* 雲端中心首頁 */}
                 {cloudCenterView === 'home' && (
-                    <>
+                    <div className="cloud-center-home-view">
                         {!isAdmin && !isEditor ? (
 <form
     className="space-y-3"
@@ -14483,12 +14605,12 @@ disabled={
                                     )}
                             </div>
                         )}
-                    </>
+                    </div>
                 )}
 
 {/* Cloud Workspace */}
 {cloudCenterView === 'workspace' && (
-    <div className="space-y-3">
+    <div className="cloud-center-list-view space-y-3">
 
         {/* Workspace 狀態訊息 */}
         {cloudWorkspaceStatus.message && (
@@ -14514,222 +14636,241 @@ disabled={
         )}
 
 
-        {/* 建立 Workspace */}
-        <button
-            type="button"
-            onClick={
-                createCloudWorkspaceFromCurrentData
-            }
-            disabled={
-                cloudWorkspaceCreateBusy ||
-                cloudWorkspaceListBusy ||
-                cloudWorkspaceSaveBusy ||
-                cloudWorkspaceActionBusy ||
-                cloudWorkspaceRenameBusy
-            }
-            className="
-                w-full h-10
-                rounded-xl
-                border border-emerald-200
-                bg-emerald-600
-                enabled:hover:bg-emerald-700
-                disabled:cursor-wait
-                text-white
-                text-xs font-black
-                transition
-                flex items-center
-                justify-center
-                gap-2
-                shadow-sm
-            "
-        >
-            {cloudWorkspaceCreateBusy ? (
-                <>
-                    <span
-                        className="
-                            w-4 h-4
-                            rounded-full
-                            border-2
-                            border-white/40
-                            border-t-white
-                            animate-spin
-                        "
-                    ></span>
-
-                    <span>
-                        正在建立...
-                    </span>
-                </>
-            ) : (
-                <>
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-4 h-4"
-                        aria-hidden="true"
-                    >
-                        <path d="M5 12h14"></path>
-                        <path d="M12 5v14"></path>
-                    </svg>
-
-                    <span>
-                        建立雲端工作資料
-                    </span>
-                </>
-            )}
-        </button>
-
-
-        {/* 目前已載入的 Workspace */}
-        {(
-            activeCloudWorkspaceId &&
-            activeCloudWorkspaceRevision > 0
-        ) && (
-            <div className="space-y-2">
-
-                {/* Active Workspace 資訊 */}
-                <div
-                    className="
-                        rounded-xl
-                        border border-blue-100
-                        bg-blue-50/60
-                        px-3 py-2.5
-                    "
-                >
-                    <div
-                        className="
-                            flex items-center
-                            justify-between
-                            gap-3
-                        "
-                    >
-                        <div className="min-w-0">
-                            <p
-                                className="
-                                    text-[10px]
-                                    font-bold
-                                    text-blue-500
-                                "
-                            >
-                                目前雲端工作資料
-                            </p>
-
-                            <p
-                                className="
-                                    mt-0.5
-                                    text-xs
-                                    font-black
-                                    text-slate-700
-                                    truncate
-                                "
-                            >
-                                {
-                                    activeCloudWorkspaceName ||
-                                    '雲端工作資料'
-                                }
-                            </p>
-                        </div>
-
-                        <span
-                            className="
-                                shrink-0
-                                px-2 py-1
-                                rounded-full
-                                bg-blue-100
-                                text-blue-700
-                                text-[9px]
-                                font-black
-                            "
-                        >
-                            Revision {
-                                activeCloudWorkspaceRevision
-                            }
-                        </span>
-                    </div>
-                </div>
-
-
-                {/* 儲存目前 Workspace */}
-                <button
-                    type="button"
-                    onClick={
-                        saveCurrentCloudWorkspace
-                    }
-                    disabled={
-                        cloudWorkspaceSaveBusy ||
-                        cloudWorkspaceListBusy ||
-                        cloudWorkspaceCreateBusy ||
-                        cloudWorkspaceActionBusy ||
-                        cloudWorkspaceRenameBusy
-                    }
-                    className="
-                        w-full h-10
-                        rounded-xl
-                        border border-blue-200
-                        bg-blue-600
-                        enabled:hover:bg-blue-700
-                        disabled:cursor-wait
-                        text-white
-                        text-xs font-black
-                        flex items-center
-                        justify-center
-                        gap-2
-                        transition
-                        shadow-sm
-                    "
-                >
-                    {cloudWorkspaceSaveBusy ? (
-                        <>
-                            <span
-                                className="
-                                    w-4 h-4
-                                    rounded-full
-                                    border-2
-                                    border-white/40
-                                    border-t-white
-                                    animate-spin
-                                "
-                            ></span>
-
-                            <span>
-                                正在儲存...
-                            </span>
-                        </>
-                    ) : (
-                        <>
-<i
+{/* 建立／儲存 Workspace */}
+<div
     className="
-        fas
-        fa-cloud-arrow-up
-        text-sm
-        leading-none
+        grid grid-cols-2
+        gap-2
     "
-    aria-hidden="true"
-></i>
+>
+    {/* 左側：建立雲端工作資料 */}
+    <button
+        type="button"
+        onClick={
+            createCloudWorkspaceFromCurrentData
+        }
+        disabled={
+            cloudWorkspaceCreateBusy ||
+            cloudWorkspaceListBusy ||
+            cloudWorkspaceSaveBusy ||
+            cloudWorkspaceActionBusy ||
+            cloudWorkspaceRenameBusy
+        }
+        className="
+            w-full min-w-0
+            h-10 sm:h-9
+            px-2
+            rounded-xl
+            border border-emerald-200
+            bg-emerald-600
+            enabled:hover:bg-emerald-700
+            disabled:cursor-wait
+            text-white
+            text-[11px] sm:text-xs
+            font-black
+            whitespace-nowrap
+            transition
+            flex items-center
+            justify-center
+            gap-1.5
+            shadow-sm
+        "
+    >
+        {cloudWorkspaceCreateBusy ? (
+            <>
+                <span
+                    className="
+                        w-3.5 h-3.5
+                        shrink-0
+                        rounded-full
+                        border-2
+                        border-white/40
+                        border-t-white
+                        animate-spin
+                    "
+                ></span>
 
-<span>
-    儲存至雲端
-</span>
-                        </>
-                    )}
-                </button>
-            </div>
+                <span>
+                    正在建立...
+                </span>
+            </>
+        ) : (
+            <>
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-3.5 h-3.5 shrink-0"
+                    aria-hidden="true"
+                >
+                    <path d="M5 12h14"></path>
+                    <path d="M12 5v14"></path>
+                </svg>
+
+                <span>
+                    建立雲端工作資料
+                </span>
+            </>
         )}
+    </button>
 
 
-        {/* Workspace 清單 */}
+    {/* 右側：儲存至雲端 */}
+    <button
+        type="button"
+        onClick={
+            saveCurrentCloudWorkspace
+        }
+        disabled={
+            !activeCloudWorkspaceId ||
+            activeCloudWorkspaceRevision < 1 ||
+            cloudWorkspaceSaveBusy ||
+            cloudWorkspaceListBusy ||
+            cloudWorkspaceCreateBusy ||
+            cloudWorkspaceActionBusy ||
+            cloudWorkspaceRenameBusy
+        }
+        className="
+            w-full min-w-0
+            h-10 sm:h-9
+            px-2
+            rounded-xl
+            border border-blue-200
+            bg-blue-600
+            enabled:hover:bg-blue-700
+            disabled:hover:bg-blue-600
+            disabled:opacity-50
+            disabled:cursor-not-allowed
+            disabled:shadow-none
+            text-white
+            text-[11px] sm:text-xs
+            font-black
+            whitespace-nowrap
+            flex items-center
+            justify-center
+            gap-1.5
+            transition
+            shadow-sm
+        "
+    >
+        {cloudWorkspaceSaveBusy ? (
+            <>
+                <span
+                    className="
+                        w-3.5 h-3.5
+                        shrink-0
+                        rounded-full
+                        border-2
+                        border-white/40
+                        border-t-white
+                        animate-spin
+                    "
+                ></span>
+
+                <span>
+                    正在儲存...
+                </span>
+            </>
+        ) : (
+            <>
+                <i
+                    className="
+                        fas
+                        fa-cloud-arrow-up
+                        text-xs
+                        leading-none
+                        shrink-0
+                    "
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    儲存至雲端
+                </span>
+            </>
+        )}
+    </button>
+</div>
+
+
+{/* 目前已載入的 Workspace */}
+{(
+    activeCloudWorkspaceId &&
+    activeCloudWorkspaceRevision > 0
+) && (
+    <div
+        className="
+            rounded-xl
+            border border-blue-100
+            bg-blue-50/60
+            px-3 py-2.5
+        "
+    >
         <div
             className="
-                space-y-2.5
-                max-h-[42svh]
-                overflow-y-auto
-                pr-1
+                flex items-center
+                justify-between
+                gap-3
             "
         >
+            <div className="min-w-0">
+                <p
+                    className="
+                        text-[10px]
+                        font-bold
+                        text-blue-500
+                    "
+                >
+                    目前雲端工作資料
+                </p>
+
+                <p
+                    className="
+                        mt-0.5
+                        text-xs
+                        font-black
+                        text-slate-700
+                        truncate
+                    "
+                >
+                    {
+                        activeCloudWorkspaceName ||
+                        '雲端工作資料'
+                    }
+                </p>
+            </div>
+
+            <span
+                className="
+                    shrink-0
+                    px-2 py-1
+                    rounded-full
+                    bg-blue-100
+                    text-blue-700
+                    text-[9px]
+                    font-black
+                "
+            >
+                Revision {
+                    activeCloudWorkspaceRevision
+                }
+            </span>
+        </div>
+    </div>
+)}
+
+
+{/* Workspace 清單 */}
+<div
+    className="
+        cloud-center-scroll-list
+        space-y-2.5
+        pr-1
+    "
+>
             {cloudWorkspaceListBusy ? (
 
                 /* 讀取中 */
@@ -15473,7 +15614,7 @@ className="
 {/* 發布新預覽設定 */}
 {cloudCenterView === 'publish' && (
 <form
-    className="space-y-3"
+    className="cloud-center-publish-view space-y-3"
     onSubmit={(event) => {
         event.preventDefault();
 
@@ -15749,7 +15890,7 @@ className="
 
 {/* 管理雲端預覽 */}
 {cloudCenterView === 'manage' && (
-    <div className="space-y-3">
+    <div className="cloud-center-list-view space-y-3">
         {cloudPreviewManageStatus.message && (
             <div
                 className={`rounded-xl border px-3 py-2.5 text-[11px] font-bold ${
@@ -15809,14 +15950,13 @@ className="
                 </p>
             </div>
         ) : (
-            <div
-                className="
-                    space-y-2.5
-                    max-h-[42svh]
-                    overflow-y-auto
-                    pr-1
-                "
-            >
+<div
+    className="
+        cloud-center-scroll-list
+        space-y-2.5
+        pr-1
+    "
+>
                 {cloudPreviewManageItems.map(
                     (
                         preview,
@@ -16269,7 +16409,7 @@ className="
 
 {/* 管理發布帳號 */}
 {cloudCenterView === 'accounts' && (
-    <div>
+    <div className="cloud-center-list-view">
         {/* 狀態訊息 */}
         {cloudPublisherAccountsStatus.message && (
             <div
@@ -16296,15 +16436,14 @@ className="
             </div>
         )}
 
-        {/* 帳號清單 */}
-        <div
-            className="
-                space-y-2.5
-                max-h-[43svh]
-                overflow-y-auto
-                pr-1
-            "
-        >
+{/* 帳號清單 */}
+<div
+    className="
+        cloud-center-scroll-list
+        space-y-2.5
+        pr-1
+    "
+>
             {cloudPublisherAccountsBusy ? (
                 <div
                     className="
@@ -16832,6 +16971,7 @@ disabled={
         closeCloudCenterModal();
     }}
     className="
+        cloud-center-footer-button
         w-full mt-4
         h-10
         rounded-xl
