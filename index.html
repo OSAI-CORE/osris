@@ -1757,6 +1757,81 @@ footer,
 }
 
 /* =========================================================
+   手機及觸控裝置 Cloud 表單輸入字體
+
+   維持 16px，避免 iPhone / Safari
+   點擊輸入框時自動放大整個網頁。
+========================================================= */
+@media screen and (max-width: 900px),
+       (hover: none) and (pointer: coarse) {
+
+    #cloud-publisher-account,
+    #cloud-publisher-password,
+
+    #cloud-preview-publish-name,
+    #cloud-preview-publish-password,
+    #cloud-preview-publish-expiry,
+    #cloud-preview-publish-max-views,
+
+    #cloud-preview-view-id,
+    #cloud-preview-view-password,
+
+    #cloud-preview-edit-name,
+    #cloud-preview-edit-password,
+    #cloud-preview-edit-expiry,
+    #cloud-preview-edit-max-views,
+
+    #cloud-preview-password-new,
+    #cloud-preview-password-confirm,
+
+    #cloud-publisher-new-password,
+    #cloud-publisher-confirm-password,
+
+    #cloud-publisher-create-account,
+    #cloud-publisher-create-password,
+    #cloud-publisher-create-confirm-password,
+
+    #cloud-workspace-rename-name {
+        font-size: 16px !important;
+        line-height: 1.25 !important;
+
+        -webkit-text-size-adjust:
+            100% !important;
+
+        text-size-adjust:
+            100% !important;
+    }
+}
+
+/* =========================================================
+   手機及觸控裝置：全系統表單防自動放大
+
+   所有可輸入文字的 input、select、textarea
+   統一維持至少 16px。
+
+   避免 iPhone / Safari 聚焦表單欄位時
+   自動放大整個網頁。
+
+   checkbox、radio、file 等非文字輸入控制項
+   不受此規則影響。
+========================================================= */
+@media screen and (max-width: 900px),
+       (hover: none) and (pointer: coarse) {
+
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+    select,
+    textarea {
+        font-size: 16px !important;
+
+        -webkit-text-size-adjust:
+            100% !important;
+
+        text-size-adjust:
+            100% !important;
+    }
+}
+
+/* =========================================================
    Cloud Viewer 輸入框 Focus Ring 修正
 
    將藍色 Focus Ring 改為輸入框內側顯示，
