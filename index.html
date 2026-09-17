@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>職業安全法規鑑別系統</title>
+    <title>OSRIS｜職業安全法規鑑別系統</title>
 
 <!-- 外部 CDN：提前建立連線 -->
 <link
@@ -16,6 +16,24 @@
     rel="preconnect"
     href="https://cdnjs.cloudflare.com"
     crossorigin
+>
+
+<!-- Google Fonts：提前建立連線，降低首次載入字型切換 -->
+<link
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+>
+
+<link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+>
+
+<!-- Noto Sans TC：比 CSS @import 更早開始載入 -->
+<link
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap"
+    rel="stylesheet"
 >
 
 <!-- Font Awesome：優先載入 Solid 圖示字型 -->
@@ -85,26 +103,186 @@
 })();
 </script>
 
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            background-color: #f8fafc;
-        }
+<style>
+    body {
+        font-family: 'Noto Sans TC', sans-serif;
+        background-color: #f8fafc;
+    }
 
 /* =========================================================
-   Header 功能按鈕首次顯示最佳化
+   OSRIS Header 首次顯示穩定化
 
-   Font Awesome Solid 圖示尚未完成載入前，
-   先保留按鈕版面但暫不顯示，
-   避免文字先出現、圖示稍後補上的視覺斷層。
+   必須同時完成：
+   1. Font Awesome Solid 圖示字型
+   2. Noto Sans TC 等頁面字型
+   3. React 初始化與角色版面
+   4. 瀏覽器完成一次版面更新
+
+   才一次顯示整個 Header 功能區。
+
+   visibility:hidden 仍保留原本版面空間，
+   不會造成顯示前後 Header 高度跳動。
 ========================================================= */
-.header-action-buttons {
-    visibility: hidden;
+
+.header-button-grid {
+    visibility:
+        hidden;
 }
 
-html.fa-icons-ready .header-action-buttons {
-    visibility: visible;
+
+html.fa-icons-ready.regulation-ui-ready
+.header-button-grid {
+    visibility:
+        visible;
+}
+
+/* =========================================================
+   法規鑑別系統 Header 主功能按鈕
+   比照風險評估系統 OSAI 平台按鈕
+
+   套用：
+   雲端中心
+   智能同步
+   匯出總表
+   OSAI 平台
+   權限登入／登出系統
+========================================================= */
+
+.header-main-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 8px;
+
+    border: 0;
+    border-radius: 12px;
+
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+
+    white-space: nowrap;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(15, 23, 42, 0.28);
+
+    transition:
+        background-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+}
+
+
+.header-main-action-btn i {
+    flex: 0 0 auto;
+
+    font-size: 13px;
+    line-height: 1;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-main-action-btn:hover {
+        box-shadow:
+            0 7px 14px -3px
+            rgba(15, 23, 42, 0.38);
+
+        transform:
+            translateY(-1px);
+    }
+
+}
+
+
+.header-main-action-btn:active {
+    transform:
+        scale(0.97);
+}
+
+
+/* =========================================================
+   OSAI 平台
+   Indigo 顏色完全比照風險評估系統
+========================================================= */
+
+.header-osai-btn {
+    background:
+        #4f46e5 !important;
+
+    color:
+        #ffffff !important;
+
+    border:
+        0 !important;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(79, 70, 229, 0.30);
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-osai-btn:hover {
+        background:
+            #4338ca !important;
+
+        color:
+            #ffffff !important;
+
+        box-shadow:
+            0 7px 14px -3px
+            rgba(79, 70, 229, 0.38);
+
+        transform:
+            translateY(-1px);
+    }
+
+}
+
+
+.header-osai-btn:active {
+    background:
+        #3730a3 !important;
+
+    transform:
+        scale(0.97);
+}
+
+
+/* =========================================================
+   桌機版
+   主功能按鈕高度統一為風險系統 32px
+========================================================= */
+
+@media screen and (min-width: 951px) {
+
+    .header-main-action-btn {
+        height:
+            32px !important;
+
+        min-height:
+            32px !important;
+
+        max-height:
+            32px !important;
+
+        width:
+            auto !important;
+
+        min-width:
+            0 !important;
+
+        padding:
+            0 20px !important;
+
+        box-sizing:
+            border-box;
+    }
+
 }
 
         @keyframes scan {
@@ -373,6 +551,139 @@ html.fa-icons-ready .header-action-buttons {
     transform: scale(0.96);
 }
 
+/* =========================================================
+   監控清單／鑑別工作台圖示按鈕外框
+   比照證照管理系統儲存按鈕
+
+   僅統一：
+   - 12px 圓角
+   - 1px 外框
+   - shadow-sm
+
+   原本尺寸、顏色與功能全部維持
+========================================================= */
+
+.edit-toggle-icon-btn,
+.save-data-icon-btn,
+.monitor-sync-icon-btn {
+    border-radius:
+        13px !important;
+
+    box-shadow:
+        0 3px 8px
+        rgba(15, 23, 42, 0.16) !important;
+}
+
+
+/* 同步鑑別維持藍色 */
+.monitor-sync-icon-btn {
+    border:
+        1px solid #2563eb !important;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .monitor-sync-icon-btn:hover {
+        border-color:
+            #1d4ed8 !important;
+    }
+
+}
+
+
+/* 法規項次框：
+   大小維持原本 40 / 56px，
+   只統一外框形狀 */
+.law-index-frame {
+    border:
+        1px solid #fb923c !important;
+
+    border-radius:
+        13px !important;
+
+    box-shadow:
+        0 3px 8px
+        rgba(15, 23, 42, 0.16) !important;
+}
+
+
+/* 桌機項次為 56 × 56，
+   依風險系統 36 × 36 / 12px 的比例放大 */
+@media screen and (min-width: 640px) {
+
+    .law-index-frame {
+        border-radius:
+            19px !important;
+    }
+
+}
+
+/* =========================================================
+   鑑別工作台：
+   列印報告／完成鑑別尺寸統一
+========================================================= */
+
+.workbench-equal-action-btn {
+    width:
+        124px;
+
+    display:
+        inline-flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    gap:
+        8px;
+}
+
+
+/* 列印報告：
+   專業 Slate 灰色 */
+.workbench-print-btn {
+    background:
+        #64748b !important;
+
+    border:
+        1px solid #64748b !important;
+
+    color:
+        #ffffff !important;
+
+    box-shadow:
+        0 1px 2px 0
+        rgba(15, 23, 42, 0.08) !important;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .workbench-print-btn:hover {
+        background:
+            #475569 !important;
+
+        border-color:
+            #475569 !important;
+
+        color:
+            #ffffff !important;
+    }
+
+}
+
+
+.workbench-print-btn:active {
+    background:
+        #334155 !important;
+
+    border-color:
+        #334155 !important;
+}
+
 .compare-summary-box {
     padding: 1.15rem 1.35rem;
     gap: 1rem;
@@ -416,6 +727,138 @@ html.fa-icons-ready .header-action-buttons {
     width: 2.2rem;
     height: 2.2rem;
     border-radius: 0.85rem;
+}
+
+/* =========================================================
+   法規鑑別系統－管理者垃圾桶統一樣式
+
+   完全比照證照管理系統：
+   1. Font Awesome fa-trash
+   2. 一般 Slate 灰色
+   3. Hover 僅垃圾桶圖示變紅
+   4. 純圖示無底色、無外框、無陰影
+========================================================= */
+
+
+/* 純垃圾桶按鈕 */
+.regulation-trash-btn {
+    padding:
+        0 !important;
+
+    border:
+        0 !important;
+
+    background:
+        transparent !important;
+
+    box-shadow:
+        none !important;
+
+    color:
+        #94a3b8 !important;
+
+    transition:
+        color 0.18s ease !important;
+}
+
+
+/* 有文字的「移除此條文」按鈕 */
+.regulation-trash-text-btn {
+    border:
+        1px solid #cbd5e1 !important;
+
+    background:
+        #ffffff !important;
+
+    box-shadow:
+        none !important;
+
+    color:
+        #64748b !important;
+
+    transition:
+        background-color 0.18s ease,
+        border-color 0.18s ease,
+        color 0.18s ease !important;
+}
+
+
+/* 所有垃圾桶圖示統一 12px */
+.regulation-trash-btn .fa-trash,
+.regulation-trash-text-btn .fa-trash {
+    font-size:
+        12px !important;
+
+    line-height:
+        1 !important;
+
+    color:
+        #94a3b8 !important;
+
+    transition:
+        color 0.18s ease !important;
+}
+
+
+/* 桌機滑鼠 */
+@media (hover: hover) and (pointer: fine) {
+
+    /* 純垃圾桶：
+       Hover 仍然沒有背景與外框 */
+    .regulation-trash-btn:hover {
+        border:
+            0 !important;
+
+        background:
+            transparent !important;
+
+        box-shadow:
+            none !important;
+
+        color:
+            #94a3b8 !important;
+
+        transform:
+            none !important;
+    }
+
+
+    /* 有文字的移除按鈕：
+       Hover 只有非常淡的紅色提示 */
+    .regulation-trash-text-btn:hover {
+        border-color:
+            #fecaca !important;
+
+        background:
+            #fff7f7 !important;
+
+        box-shadow:
+            none !important;
+
+        color:
+            #64748b !important;
+
+        transform:
+            none !important;
+    }
+
+
+    /* 不論哪一種，
+       Hover 都只有垃圾桶本身變紅 */
+    .regulation-trash-btn:hover .fa-trash,
+    .regulation-trash-text-btn:hover .fa-trash {
+        color:
+            #dc2626 !important;
+    }
+
+}
+
+
+/* 點擊時也不產生位移 */
+.regulation-trash-btn:active,
+.regulation-trash-text-btn:active {
+    transform:
+        none !important;
 }
 
 .admin-textarea-compact {
@@ -686,85 +1129,156 @@ header .mobile-hide.sm\:block {
     white-space: nowrap;
 }
 
+/*
+ * Header 五顆主要功能按鈕：
+ * 手機直式尺寸比照風險評估系統主功能鈕。
+ */
+.header-action-buttons > .header-main-action-btn {
+    min-height:
+        40px !important;
+
+    padding:
+        0.55rem
+        0.5rem !important;
+
+    border-radius:
+        0.75rem !important;
+
+    font-size:
+        0.75rem !important;
+
+    gap:
+        0.4rem !important;
+}
+
 /* =========================================
    預覽者
-   第一排：匯出總表／權限登入
-   第二排：雲端中心
+
+   第一排：
+   匯出總表／權限登入
+
+   第二排：
+   雲端中心／OSAI 平台
 ========================================= */
 
-.header-actions-viewer .header-export-btn {
+.header-actions-viewer
+.header-export-btn {
     order: 1;
     grid-column: auto !important;
 }
 
-.header-actions-viewer .header-auth-btn {
+.header-actions-viewer
+.header-auth-btn {
     order: 2;
     grid-column: auto !important;
 }
 
-.header-actions-viewer .header-cloud-btn {
+.header-actions-viewer
+.header-cloud-btn {
     order: 3;
-    grid-column: 1 / -1 !important;
+    grid-column: auto !important;
+}
+
+.header-actions-viewer
+.header-osai-btn {
+    order: 4;
+    grid-column: auto !important;
 }
 
 
 /* =========================================
    使用者
-   第一排：智能同步／匯出總表
-   第二排：雲端中心／登出系統
+
+   第一排：
+   智能同步／匯出總表
+
+   第二排：
+   OSAI 平台／登出系統
+
+   第三排：
+   雲端中心
 ========================================= */
 
-.header-actions-editor .header-sync-btn {
+.header-actions-editor
+.header-sync-btn {
     order: 1;
     grid-column: auto !important;
 }
 
-.header-actions-editor .header-export-btn {
+.header-actions-editor
+.header-export-btn {
     order: 2;
     grid-column: auto !important;
 }
 
-.header-actions-editor .header-cloud-btn {
+.header-actions-editor
+.header-osai-btn {
     order: 3;
     grid-column: auto !important;
 }
 
-.header-actions-editor .header-auth-btn {
+.header-actions-editor
+.header-auth-btn {
     order: 4;
     grid-column: auto !important;
+}
+
+.header-actions-editor
+.header-cloud-btn {
+    order: 5;
+
+    grid-column:
+        1 / -1 !important;
 }
 
 
 /* =========================================
    管理者
-   第一排：智能同步／匯出總表
-   第二排：登出系統／權限設定
-   第三排：雲端中心
+
+   第一排：
+   智能同步／匯出總表
+
+   第二排：
+   OSAI 平台／登出系統
+
+   第三排：
+   雲端中心／權限設定
 ========================================= */
 
-.header-actions-admin .header-sync-btn {
+.header-actions-admin
+.header-sync-btn {
     order: 1;
     grid-column: auto !important;
 }
 
-.header-actions-admin .header-export-btn {
+.header-actions-admin
+.header-export-btn {
     order: 2;
     grid-column: auto !important;
 }
 
-.header-actions-admin .header-auth-btn {
+.header-actions-admin
+.header-osai-btn {
     order: 3;
     grid-column: auto !important;
 }
 
-.header-actions-admin .header-settings-btn {
+.header-actions-admin
+.header-auth-btn {
     order: 4;
     grid-column: auto !important;
 }
 
-.header-actions-admin .header-cloud-btn {
+.header-actions-admin
+.header-cloud-btn {
     order: 5;
-    grid-column: 1 / -1 !important;
+    grid-column: auto !important;
+}
+
+.header-actions-admin
+.header-settings-btn {
+    order: 6;
+    grid-column: auto !important;
 }
 
     }
@@ -1843,6 +2357,899 @@ footer,
         inset;
 }
 
+
+/* =========================================================
+   OSRIS Header 最終統一版
+   比照職業安全證照管理系統
+
+   僅修改：
+   - 排版
+   - 尺寸
+   - 配色
+   - Hover / Active
+   - 手機圖示顯示
+
+   不修改任何功能、權限或資料邏輯
+========================================================= */
+
+
+/* =========================================================
+   共用兩排框架
+========================================================= */
+
+.header-button-grid {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-end;
+
+    gap: 7px;
+}
+
+
+.header-action-buttons {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+
+    align-items: center !important;
+    justify-content: flex-end !important;
+
+    gap: 7px !important;
+
+    width: auto !important;
+}
+
+
+.header-data-actions {
+    display: grid;
+
+    align-items: center;
+    justify-content: end;
+
+    gap: 7px;
+}
+
+
+/* Viewer：
+   第二排只剩載入／退出預覽，
+   自動位於權限登入正下方 */
+.header-role-viewer
+.header-data-actions {
+    grid-template-columns:
+        116px;
+}
+
+
+/* Editor：
+   匯出資料 → OSAI 下方
+   載入資料 → 登出下方 */
+.header-role-editor
+.header-data-actions {
+    grid-template-columns:
+        repeat(2, 116px);
+}
+
+
+/* Admin：
+   權限設定 → 匯出總表下方
+   匯出資料 → OSAI 下方
+   匯入資料 → 登出下方 */
+.header-role-admin
+.header-data-actions {
+    grid-template-columns:
+        repeat(3, 116px);
+}
+
+
+/* =========================================================
+   桌機版
+   比照證照系統：116 × 32
+========================================================= */
+
+@media screen and (min-width: 951px) {
+
+    .header-main-action-btn,
+    .header-data-btn {
+        width: 116px !important;
+        min-width: 116px !important;
+        max-width: 116px !important;
+
+        height: 32px !important;
+        min-height: 32px !important;
+        max-height: 32px !important;
+
+        padding: 0 12px !important;
+
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+
+        gap: 6px !important;
+
+        border: 0 !important;
+        border-radius: 12px !important;
+
+        box-sizing: border-box !important;
+
+        font-size: 13px !important;
+        font-weight: 900 !important;
+        line-height: 1 !important;
+
+        white-space: nowrap !important;
+    }
+
+
+    .header-main-action-btn i,
+    .header-data-btn i {
+        width: 13px !important;
+        min-width: 13px !important;
+        height: 13px !important;
+
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+
+        flex: 0 0 13px !important;
+
+        font-size: 13px !important;
+        line-height: 13px !important;
+    }
+
+
+    /* 管理者齒輪：
+       與證照系統相同純齒輪方形按鈕 */
+.header-settings-btn {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+
+    padding: 0 !important;
+
+    gap: 0 !important;
+
+    border-radius: 12px !important;
+
+    justify-self: end;
+
+    box-sizing: border-box !important;
+}
+
+
+    .header-settings-btn span {
+        display: none !important;
+    }
+
+}
+
+/* =========================================================
+   預覽者：權限登入
+   完全比照證照管理系統
+
+   一般   #3f5f7a
+   Hover  #314b63
+   Active #263b4f
+
+   僅作用於 Viewer 的「權限登入」，
+   不影響 Editor／Admin 的「登出系統」。
+========================================================= */
+
+.header-role-viewer
+.header-auth-btn {
+    background:
+        #3f5f7a !important;
+
+    color:
+        #ffffff !important;
+
+    border-color:
+        transparent !important;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(63, 95, 122, 0.30) !important;
+}
+
+
+/* 桌機滑鼠 Hover */
+@media (hover: hover) and (pointer: fine) {
+
+    .header-role-viewer
+    .header-auth-btn:hover {
+        background:
+            #314b63 !important;
+
+        color:
+            #ffffff !important;
+
+        box-shadow:
+            0 7px 14px -3px
+            rgba(63, 95, 122, 0.36) !important;
+    }
+
+}
+
+
+/* 點擊狀態 */
+.header-role-viewer
+.header-auth-btn:active {
+    background:
+        #263b4f !important;
+
+    color:
+        #ffffff !important;
+}
+
+/* =========================================================
+   匯出總表
+   完全比照證照管理系統
+========================================================= */
+
+.header-export-btn {
+    background:
+        #0f766e !important;
+
+    color:
+        #ffffff !important;
+
+    border-color:
+        transparent !important;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(15, 118, 110, 0.28) !important;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-export-btn:hover {
+        background:
+            #115e59 !important;
+
+        color:
+            #ffffff !important;
+
+        box-shadow:
+            0 7px 14px -3px
+            rgba(15, 118, 110, 0.34) !important;
+    }
+
+}
+
+
+.header-export-btn:active {
+    background:
+        #134e4a !important;
+
+    color:
+        #ffffff !important;
+}
+
+
+/* =========================================================
+   智能同步
+   成熟琥珀棕／Ochre Amber
+========================================================= */
+
+.header-sync-btn {
+    background:
+        #a16207 !important;
+
+    color:
+        #ffffff !important;
+
+    border-color:
+        transparent !important;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(161, 98, 7, 0.30) !important;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-sync-btn:hover {
+        background:
+            #854d0e !important;
+
+        color:
+            #ffffff !important;
+
+        box-shadow:
+            0 7px 14px -3px
+            rgba(133, 77, 14, 0.38) !important;
+    }
+
+}
+
+
+.header-sync-btn:active {
+    background:
+        #713f12 !important;
+
+    color:
+        #ffffff !important;
+}
+
+
+/* =========================================================
+   匯出資料／載入預覽／退出預覽／
+   載入資料／匯入資料
+
+   配色完全比照風險評估系統
+
+   一般   #334155
+   Hover  #475569
+   Active #334155
+========================================================= */
+
+.header-data-btn {
+    background:
+        #334155 !important;
+
+    color:
+        #ffffff !important;
+
+    border:
+        0 !important;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(15, 23, 42, 0.28) !important;
+
+    transition:
+        background-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease !important;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-data-btn:hover {
+        background:
+            #475569 !important;
+
+        color:
+            #ffffff !important;
+
+        box-shadow:
+            0 7px 14px -3px
+            rgba(15, 23, 42, 0.38) !important;
+
+        transform:
+            none !important;
+    }
+
+}
+
+
+.header-data-btn:active {
+    background:
+        #334155 !important;
+
+    color:
+        #ffffff !important;
+
+    transform:
+        none !important;
+}
+
+
+/* =========================================================
+   管理者權限設定
+   比照證照管理系統
+========================================================= */
+
+.header-settings-btn {
+    background:
+        #3f5f7a !important;
+
+    color:
+        #ffffff !important;
+
+    border:
+        0 !important;
+
+    box-shadow:
+        0 4px 6px -1px
+        rgba(63, 95, 122, 0.30) !important;
+
+    transition:
+        background-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease !important;
+}
+
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-settings-btn:hover {
+        background:
+            #314b63 !important;
+
+        color:
+            #ffffff !important;
+
+        box-shadow:
+            0 7px 14px -3px
+            rgba(63, 95, 122, 0.36) !important;
+    }
+
+}
+
+
+.header-settings-btn:active {
+    background:
+        #263b4f !important;
+
+    color:
+        #ffffff !important;
+
+    transform:
+        scale(0.97);
+}
+
+
+/* =========================================================
+   手機橫式
+   排列與桌機完全相同
+   尺寸比照證照管理系統橫式比例
+========================================================= */
+
+@media screen
+and (orientation: landscape)
+and (max-width: 950px) {
+
+    .header-button-grid {
+        display: flex !important;
+        flex-direction: column !important;
+
+        align-items: flex-end !important;
+
+        gap: 7px !important;
+    }
+
+
+    .header-action-buttons {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+
+        align-items: center !important;
+        justify-content: flex-end !important;
+
+        gap: 7px !important;
+
+        width: auto !important;
+    }
+
+
+    .header-main-action-btn,
+    .header-data-btn {
+        width: 92px !important;
+        min-width: 92px !important;
+        max-width: 92px !important;
+
+        height: 34px !important;
+        min-height: 34px !important;
+        max-height: 34px !important;
+
+        padding: 0 10px !important;
+
+        gap: 6px !important;
+
+        border-radius:
+            11px !important;
+
+        font-size:
+            11px !important;
+
+        font-weight:
+            900 !important;
+    }
+
+
+    .header-main-action-btn i,
+    .header-data-btn i {
+        font-size:
+            13px !important;
+
+        line-height:
+            13px !important;
+    }
+
+
+    .header-role-viewer
+    .header-data-actions {
+        grid-template-columns:
+            92px;
+    }
+
+
+    .header-role-editor
+    .header-data-actions {
+        grid-template-columns:
+            repeat(2, 92px);
+    }
+
+
+    .header-role-admin
+    .header-data-actions {
+        grid-template-columns:
+            repeat(3, 92px);
+    }
+
+
+.header-settings-btn {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
+
+    padding: 0 !important;
+
+    gap: 0 !important;
+
+    border-radius:
+        11px !important;
+
+    justify-self: end;
+}
+
+
+    .header-settings-btn span {
+        display:
+            none !important;
+    }
+
+}
+
+/* =========================================================
+   Header 所有三方權限按鈕
+   取消滑鼠 Hover 上浮效果
+
+   保留：
+   - 顏色變化
+   - 陰影變化
+   - 原本 Active 點擊效果
+========================================================= */
+
+@media (hover: hover) and (pointer: fine) {
+
+    .header-button-grid button:hover {
+        transform:
+            none !important;
+    }
+
+}
+
+/* =========================================================
+   手機直式
+   比照證照管理系統：
+   1. 全部純圖示
+   2. 所有功能平均分配成單排
+========================================================= */
+
+@media screen
+and (orientation: portrait)
+and (max-width: 767px) {
+
+    .header-button-grid {
+        width:
+            100% !important;
+
+        display:
+            grid !important;
+
+        align-items:
+            center !important;
+
+        justify-content:
+            stretch !important;
+
+        gap:
+            4px !important;
+    }
+
+
+    /* Viewer：5 顆 */
+    .header-role-viewer {
+        grid-template-columns:
+            repeat(
+                5,
+                minmax(0, 1fr)
+            ) !important;
+    }
+
+
+    /* Editor：7 顆 */
+    .header-role-editor {
+        grid-template-columns:
+            repeat(
+                7,
+                minmax(0, 1fr)
+            ) !important;
+    }
+
+
+    /* Admin：8 顆 */
+    .header-role-admin {
+        grid-template-columns:
+            repeat(
+                8,
+                minmax(0, 1fr)
+            ) !important;
+    }
+
+
+    /*
+     * 拆除桌機的上下兩排容器，
+     * 全部按鈕直接參與同一排 Grid。
+     */
+    .header-action-buttons,
+    .header-data-actions {
+        display:
+            contents !important;
+    }
+
+
+    .header-button-grid button {
+        width:
+            100% !important;
+
+        min-width:
+            0 !important;
+
+        max-width:
+            none !important;
+
+        height:
+            40px !important;
+
+        min-height:
+            40px !important;
+
+        max-height:
+            40px !important;
+
+        padding:
+            0 !important;
+
+        margin:
+            0 !important;
+
+        display:
+            inline-flex !important;
+
+        align-items:
+            center !important;
+
+        justify-content:
+            center !important;
+
+        gap:
+            0 !important;
+
+        border-radius:
+            10px !important;
+
+        box-sizing:
+            border-box !important;
+    }
+
+
+    /*
+     * 直式預覽只顯示圖示，
+     * 動態文字仍保留於 DOM，
+     * 所有原有 JS / React 邏輯不變。
+     */
+    .header-button-grid button span {
+        display:
+            none !important;
+    }
+
+
+    .header-button-grid button i {
+        width:
+            16px !important;
+
+        min-width:
+            16px !important;
+
+        height:
+            16px !important;
+
+        display:
+            inline-flex !important;
+
+        align-items:
+            center !important;
+
+        justify-content:
+            center !important;
+
+        flex:
+            0 0 16px !important;
+
+        margin:
+            0 !important;
+
+        font-size:
+            16px !important;
+
+        line-height:
+            16px !important;
+    }
+
+
+    /* -----------------------------------------
+       Viewer
+
+       雲端中心
+       匯出總表
+       OSAI
+       權限登入
+       載入／退出預覽
+    ----------------------------------------- */
+
+    .header-role-viewer
+    .header-cloud-btn {
+        order: 1 !important;
+        grid-column: auto !important;
+    }
+
+    .header-role-viewer
+    .header-export-btn {
+        order: 2 !important;
+        grid-column: auto !important;
+    }
+
+    .header-role-viewer
+    .header-osai-btn {
+        order: 3 !important;
+        grid-column: auto !important;
+    }
+
+    .header-role-viewer
+    .header-auth-btn {
+        order: 4 !important;
+        grid-column: auto !important;
+    }
+
+    .header-role-viewer
+    .header-import-data-btn {
+        order: 5 !important;
+        grid-column: auto !important;
+    }
+
+
+    /* -----------------------------------------
+       Editor
+
+       雲端中心
+       智能同步
+       匯出總表
+       OSAI
+       登出
+       匯出資料
+       載入資料
+    ----------------------------------------- */
+
+    .header-role-editor
+    .header-cloud-btn {
+        order: 1 !important;
+    }
+
+    .header-role-editor
+    .header-sync-btn {
+        order: 2 !important;
+    }
+
+    .header-role-editor
+    .header-export-btn {
+        order: 3 !important;
+    }
+
+    .header-role-editor
+    .header-osai-btn {
+        order: 4 !important;
+    }
+
+    .header-role-editor
+    .header-auth-btn {
+        order: 5 !important;
+        grid-column: auto !important;
+    }
+
+    .header-role-editor
+    .header-export-data-btn {
+        order: 6 !important;
+    }
+
+    .header-role-editor
+    .header-import-data-btn {
+        order: 7 !important;
+    }
+
+
+    /* -----------------------------------------
+       Admin
+
+       雲端中心
+       智能同步
+       匯出總表
+       OSAI
+       登出
+       權限設定
+       匯出資料
+       匯入資料
+    ----------------------------------------- */
+
+    .header-role-admin
+    .header-cloud-btn {
+        order: 1 !important;
+    }
+
+    .header-role-admin
+    .header-sync-btn {
+        order: 2 !important;
+    }
+
+    .header-role-admin
+    .header-export-btn {
+        order: 3 !important;
+    }
+
+    .header-role-admin
+    .header-osai-btn {
+        order: 4 !important;
+    }
+
+    .header-role-admin
+    .header-auth-btn {
+        order: 5 !important;
+    }
+
+    .header-role-admin
+    .header-settings-btn {
+        order: 6 !important;
+
+        width:
+            100% !important;
+
+        min-width:
+            0 !important;
+
+        max-width:
+            none !important;
+
+        justify-self:
+            stretch !important;
+    }
+
+    .header-role-admin
+    .header-export-data-btn {
+        order: 7 !important;
+    }
+
+    .header-role-admin
+    .header-import-data-btn {
+        order: 8 !important;
+    }
+
+}
+
+
     </style>
 </head>
 <body>
@@ -2000,6 +3407,27 @@ const OSH_CLOUD_VIEW_FUNCTION =
 
 const OSH_CLOUD_WORKSPACE_FUNCTION =
     `${OSH_CLOUD_PROJECT_URL}/functions/v1/cloud-workspace`;
+
+
+/* =========================================================
+   OSAI 智慧管理平台
+========================================================= */
+
+const OSAI_PLATFORM_URL =
+    'https://osai-core.vercel.app/';
+
+const OSAI_PLATFORM_WINDOW_NAME =
+    'OSAI_PLATFORM';
+
+const openOsaiPlatform = () => {
+
+    window.open(
+        OSAI_PLATFORM_URL,
+        OSAI_PLATFORM_WINDOW_NAME,
+        'noopener,noreferrer'
+    );
+};
+
 
         const App = () => {
 const UNIFIED_INITIAL_DATE = '2026-09-01';
@@ -3709,6 +5137,83 @@ await dbManager.clearAll();
                 };
                 loadData();
             }, []);
+
+
+/*
+ * =========================================================
+ * OSRIS Header 首次顯示穩定化
+ * =========================================================
+ *
+ * 等待：
+ * 1. React 基礎資料與角色狀態初始化完成
+ * 2. Noto Sans TC / Font Awesome 等字型完成
+ * 3. 瀏覽器完成一次版面更新
+ *
+ * 再一次顯示整個 Header 功能按鈕區，
+ * 避免首次開啟頁面時：
+ * - 按鈕尺寸瞬間改變
+ * - 字體切換
+ * - 圖示後補
+ * - 按鈕排列短暫跳動
+ */
+useEffect(() => {
+
+    /*
+     * 系統基礎資料尚未初始化完成時，
+     * Header 先維持隱藏。
+     */
+    if (!isLoaded) {
+        return;
+    }
+
+
+    const revealRegulationHeaderActions = () => {
+
+        /*
+         * 再等待瀏覽器完成一次版面更新，
+         * 確保角色與按鈕排列已經穩定。
+         */
+        requestAnimationFrame(() => {
+
+            document.documentElement
+                .classList.add(
+                    'regulation-ui-ready'
+                );
+
+        });
+
+    };
+
+
+    /*
+     * 等待 Noto Sans TC、
+     * Font Awesome 與其他頁面字型完成。
+     */
+    if (
+        document.fonts &&
+        document.fonts.ready
+    ) {
+
+        document.fonts.ready
+            .then(
+                revealRegulationHeaderActions
+            )
+            .catch(
+                revealRegulationHeaderActions
+            );
+
+    } else {
+
+        /*
+         * 舊版瀏覽器沒有 Font API 時，
+         * 直接進行顯示流程。
+         */
+        revealRegulationHeaderActions();
+
+    }
+
+}, [isLoaded]);
+
 
 useEffect(() => {
     const timer = setInterval(() => {
@@ -13169,19 +14674,66 @@ workbenchManualDirtyRef.current =
 
 const removeDetailRow = (lawId, rowIndex) => {
     if (!canDeleteDetailRows()) {
-        alert('只有管理者可以刪除條文。');
+        alert(
+            '只有管理者可以刪除條文。'
+        );
         return;
     }
 
-workbenchManualDirtyRef.current =
-    true;
+
+    /*
+     * 刪除條文前再次確認。
+     *
+     * 桌機表格垃圾桶與手機「移除此條文」
+     * 共用此函式，因此只需要在這裡統一防呆。
+     */
+    const confirmed =
+        window.confirm(
+            `確定要移除第 ${rowIndex + 1} 筆法規條文嗎？\n\n` +
+            '此條文將從目前鑑別工作台移除。\n' +
+            '請記得按下綠色儲存按鈕，確認本次工作階段修改。'
+        );
+
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    /*
+     * 以下原有刪除與 Dirty 邏輯
+     * 完全維持不變。
+     */
+    workbenchManualDirtyRef.current =
+        true;
+
 
     setLawDetails(prev => {
-                    const current = prev[lawId] || { rows: [] };
-                    const newRows = current.rows.filter((_, idx) => idx !== rowIndex);
-                    return { ...prev, [lawId]: { rows: newRows } };
-                });
+
+        const current =
+            prev[lawId] ||
+            {
+                rows: []
             };
+
+
+        const newRows =
+            current.rows.filter(
+                (_, idx) =>
+                    idx !== rowIndex
+            );
+
+
+        return {
+            ...prev,
+
+            [lawId]: {
+                rows:
+                    newRows
+            }
+        };
+    });
+};
 
 const addDetailRow = (lawId) => {
     if (!canAddDetailRows()) {
@@ -15425,18 +16977,17 @@ const isDeletingWorkspace =
                 workspace
             );
         }}
-        className="
-            cloud-tooltip-btn
-            w-7 h-7
-            rounded-lg
-            text-red-500
-            enabled:hover:text-red-600
-            transition
-            flex
-            items-center
-            justify-center
-            disabled:cursor-wait
-        "
+className="
+    cloud-tooltip-btn
+    regulation-trash-btn
+    w-7 h-7
+    rounded-lg
+    transition
+    flex
+    items-center
+    justify-center
+    disabled:cursor-wait
+"
         data-tooltip="刪除"
         aria-label={`刪除 ${workspaceName}`}
     >
@@ -15453,26 +17004,12 @@ const isDeletingWorkspace =
                 aria-hidden="true"
             ></span>
 
-        ) : (
-            <svg
-                viewBox="0 0 24 24"
-                className="
-                    w-[17px]
-                    h-[17px]
-                "
-                aria-hidden="true"
-            >
-                <path
-                    fill="currentColor"
-                    d="M9 3.5h6l.8 1.7H20a1 1 0 1 1 0 2H4a1 1 0 0 1 0-2h4.2L9 3.5Z"
-                ></path>
-
-                <path
-                    fill="currentColor"
-                    d="M6.2 8.7h11.6l-.8 10.1A2.5 2.5 0 0 1 14.5 21h-5a2.5 2.5 0 0 1-2.5-2.2L6.2 8.7Zm3.2 2.2a.8.8 0 0 0-.8.8l.3 5.6a.8.8 0 0 0 1.6-.1l-.3-5.6a.8.8 0 0 0-.8-.7Zm5.2 0a.8.8 0 0 0-.8.7l-.3 5.6a.8.8 0 1 0 1.6.1l.3-5.6a.8.8 0 0 0-.8-.8Z"
-                ></path>
-            </svg>
-        )}
+) : (
+    <i
+        className="fas fa-trash"
+        aria-hidden="true"
+    ></i>
+)}
     </button>
 )}
 
@@ -16400,20 +17937,15 @@ aria-label={
                         preview
                     );
                 }}
-                className="
-                    cloud-tooltip-btn
-                    w-7 h-7
-                    rounded-lg
-                    border border-red-100
-                    bg-red-50
-                    text-red-500
-                    hover:bg-red-100
-                    hover:border-red-200
-                    hover:text-red-600
-                    transition
-                    flex items-center justify-center
-                    disabled:cursor-wait
-                "
+className="
+    cloud-tooltip-btn
+    regulation-trash-btn
+    w-7 h-7
+    rounded-lg
+    transition
+    flex items-center justify-center
+    disabled:cursor-wait
+"
 data-tooltip="刪除"
 aria-label="刪除"
             >
@@ -16428,23 +17960,12 @@ aria-label="刪除"
                             animate-spin
                         "
                     ></span>
-                ) : (
-                    <svg
-                        viewBox="0 0 24 24"
-                        className="w-[17px] h-[17px]"
-                        aria-hidden="true"
-                    >
-                        <path
-                            fill="currentColor"
-                            d="M9 3.5h6l.8 1.7H20a1 1 0 1 1 0 2H4a1 1 0 0 1 0-2h4.2L9 3.5Z"
-                        ></path>
-
-                        <path
-                            fill="currentColor"
-                            d="M6.2 8.7h11.6l-.8 10.1A2.5 2.5 0 0 1 14.5 21h-5a2.5 2.5 0 0 1-2.5-2.2L6.2 8.7Zm3.2 2.2a.8.8 0 0 0-.8.8l.3 5.6a.8.8 0 0 0 1.6-.1l-.3-5.6a.8.8 0 0 0-.8-.7Zm5.2 0a.8.8 0 0 0-.8.7l-.3 5.6a.8.8 0 1 0 1.6.1l.3-5.6a.8.8 0 0 0-.8-.8Z"
-                        ></path>
-                    </svg>
-                )}
+) : (
+    <i
+        className="fas fa-trash"
+        aria-hidden="true"
+    ></i>
+)}
             </button>
 
         </div>
@@ -19494,13 +21015,30 @@ className="
             onClick={(e) => e.stopPropagation()}
         >
             <div className="p-5">
-                <div className="flex flex-col items-center text-center mb-3">
-                    <div className="bg-yellow-50 p-2 rounded-full mb-2">
-                        <i className="fas fa-key text-yellow-600 text-lg w-6 h-6 flex items-center justify-center"></i>
-                    </div>
-                    <h3 className="text-lg font-black text-slate-900">權限與密碼設定</h3>
-                    <p className="text-xs text-slate-500 mt-1">僅管理者可修改密碼與使用者權限</p>
-                </div>
+<div className="flex flex-col items-center text-center mb-3">
+
+    <div className="bg-yellow-50 p-2 rounded-full mb-1.5">
+        <i className="fas fa-key text-yellow-600 text-lg w-6 h-6 flex items-center justify-center"></i>
+    </div>
+
+    <p
+        className="
+            text-[11px]
+            text-slate-500
+            tracking-[0.14em]
+            font-semibold
+            leading-none
+            mb-1.5
+        "
+    >
+        ACCESS SETTINGS
+    </p>
+
+    <h3 className="text-lg font-black text-slate-800">
+        權限與密碼設定
+    </h3>
+
+</div>
 
                 <div className="space-y-2">
                     <div>
@@ -19583,12 +21121,30 @@ setDraftEditorEnabled(
                             取消
                         </button>
 
-                        <button
-                            onClick={handleChangePassword}
-                            className="flex-1 py-1.5 bg-yellow-500 text-white rounded-lg font-bold hover:bg-yellow-600 transition text-xs"
-                        >
-                            儲存設定
-                        </button>
+<button
+    onClick={handleChangePassword}
+    className="
+        flex-1
+        py-1.5
+        bg-indigo-600
+        text-white
+        rounded-lg
+        font-bold
+        hover:bg-indigo-700
+        transition
+        text-xs
+        flex
+        items-center
+        justify-center
+        gap-1.5
+    "
+>
+    <i className="fa-solid fa-floppy-disk"></i>
+
+    <span>
+        儲存設定
+    </span>
+</button>
                     </div>
                 </div>
             </div>
@@ -19852,148 +21408,368 @@ setDraftEditorEnabled(
                             </div>
                         </div>
 
-                        <div className="header-action-zone flex flex-col items-stretch sm:items-end gap-3">
-<div className="time-display-box">
-    <span className="time-desktop text-slate-400 font-black text-xs tracking-widest tabular-nums opacity-90">
-        {formatTime(currentTime)}
-    </span>
+<div className="header-action-zone flex flex-col items-stretch sm:items-end gap-3">
 
-    <span className="time-mobile-date">
-        {formatDateOnly(currentTime)}
-    </span>
+    <div className="time-display-box">
+        <span className="time-desktop text-slate-400 font-black text-xs tracking-widest tabular-nums opacity-90">
+            {formatTime(currentTime)}
+        </span>
 
-    <span className="time-mobile-clock">
-        {formatClockOnly(currentTime)}
-    </span>
-</div>
-                            
-<div
-    className={`
-        header-action-buttons
-        grid grid-cols-2
-        sm:flex sm:flex-row
-        gap-2 sm:gap-3
-        w-full sm:w-auto
+        <span className="time-mobile-date">
+            {formatDateOnly(currentTime)}
+        </span>
 
-        ${
-            isAdmin
-                ? 'header-actions-admin'
-                : isEditor
-                    ? 'header-actions-editor'
-                    : 'header-actions-viewer'
-        }
-    `}
->
+        <span className="time-mobile-clock">
+            {formatClockOnly(currentTime)}
+        </span>
+    </div>
 
-<button
-    type="button"
-    onClick={
-        openCloudCenterModal
-    }
-    className="
-        header-cloud-btn
-        col-span-2 sm:col-auto
-        flex items-center justify-center
-        w-full sm:w-40
-        gap-2 sm:gap-3
-        py-2 sm:py-2.5
-        bg-sky-600
-        hover:bg-sky-700
-        text-white
-        rounded-xl
-        text-xs sm:text-sm
-        font-black
-        transition-all
-    "
->
-    <i className="fas fa-cloud"></i>
 
-    <span>
-        雲端中心
-    </span>
-</button>  
+    <div
+        className={`
+            header-button-grid
 
-{canUseSmartSync() && (
-    <button
-        onClick={handleAllSync}
-        className="header-sync-btn flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-emerald-700 transition-all"
+            ${
+                isAdmin
+                    ? 'header-role-admin'
+                    : isEditor
+                        ? 'header-role-editor'
+                        : 'header-role-viewer'
+            }
+        `}
     >
-        <i className="fas fa-rotate"></i> 智能同步
-    </button>
-)}
-    
-{canExportReport() && (
-    <button
-        onClick={handleExport}
-        className="header-export-btn flex items-center justify-center w-full sm:w-40 gap-1.5 sm:gap-3 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all"
-    >
-        <i className="fas fa-file-export"></i> 匯出總表
-    </button>
-)}
 
-<button
-    onClick={handleAuthClick}
-    className={`
-        header-auth-btn
-        flex items-center justify-center
-        w-full sm:w-40
-        gap-2 sm:gap-3
-        py-2 sm:py-2.5
-        text-white
-        rounded-xl
-        text-xs sm:text-sm
-        font-black
-        transition-all
+        {/* =====================================================
+            第一排：系統主要功能
+        ===================================================== */}
+        <div
+            className={`
+                header-action-buttons
+                grid grid-cols-2
+                sm:flex sm:flex-row
+                gap-2 sm:gap-3
+                w-full sm:w-auto
 
-        ${
-            isAdmin || isEditor
-                ? 'bg-rose-600 hover:bg-rose-700'
-                : 'bg-slate-700 hover:bg-slate-800'
+                ${
+                    isAdmin
+                        ? 'header-actions-admin'
+                        : isEditor
+                            ? 'header-actions-editor'
+                            : 'header-actions-viewer'
+                }
+            `}
+        >
+
+            {/* 雲端中心 */}
+            <button
+                type="button"
+                onClick={openCloudCenterModal}
+                className="
+                    header-cloud-btn
+                    header-main-action-btn
+                    flex items-center justify-center
+                    w-full sm:w-40
+                    bg-sky-600
+                    hover:bg-sky-700
+                    text-white
+                "
+                aria-label="開啟雲端中心"
+            >
+                <i
+                    className="fas fa-cloud"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    雲端中心
+                </span>
+            </button>
+
+
+            {/* 智能同步 */}
+            {canUseSmartSync() && (
+                <button
+                    type="button"
+                    onClick={handleAllSync}
+                    className="
+                        header-sync-btn
+                        header-main-action-btn
+                        flex items-center justify-center
+                        w-full sm:w-40
+                        text-white
+                    "
+                >
+                    <i
+                        className="fas fa-rotate"
+                        aria-hidden="true"
+                    ></i>
+
+                    <span>
+                        智能同步
+                    </span>
+                </button>
+            )}
+
+
+            {/* 匯出總表 */}
+            {canExportReport() && (
+                <button
+                    type="button"
+                    onClick={handleExport}
+                    className="
+                        header-export-btn
+                        header-main-action-btn
+                        flex items-center justify-center
+                        w-full sm:w-40
+                        text-white
+                    "
+                >
+                    <i
+                        className="fas fa-file-export"
+                        aria-hidden="true"
+                    ></i>
+
+                    <span>
+                        匯出總表
+                    </span>
+                </button>
+            )}
+
+
+            {/* OSAI 智慧管理平台 */}
+            <button
+                type="button"
+                onClick={openOsaiPlatform}
+                className="
+                    header-osai-btn
+                    header-main-action-btn
+                    flex items-center justify-center
+                    w-full sm:w-40
+                    text-white
+                "
+                aria-label="切換至 OSAI 管理平台"
+            >
+                <i
+                    className="fas fa-layer-group"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    OSAI 平台
+                </span>
+            </button>
+
+
+            {/* 權限登入／登出系統 */}
+            <button
+                type="button"
+                onClick={handleAuthClick}
+                className={`
+                    header-auth-btn
+                    header-main-action-btn
+                    flex items-center justify-center
+                    w-full sm:w-40
+                    text-white
+
+                    ${
+                        isAdmin || isEditor
+                            ? 'bg-rose-600 hover:bg-rose-700'
+                            : 'bg-slate-700 hover:bg-slate-800'
+                    }
+
+                    ${
+                        isEditor && !isAdmin
+                            ? 'col-span-2 sm:col-auto'
+                            : ''
+                    }
+                `}
+            >
+                <i
+                    className={
+                        isAdmin || isEditor
+                            ? 'fas fa-right-from-bracket'
+                            : 'fas fa-lock'
+                    }
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    {isAdmin || isEditor
+                        ? '登出系統'
+                        : '權限登入'}
+                </span>
+            </button>
+
+        </div>
+
+
+        {/* =====================================================
+            第二排：資料操作
+
+            Viewer：
+            載入預覽／退出預覽 → 權限登入下方
+
+            Editor：
+            匯出資料 → OSAI 下方
+            載入資料 → 登出下方
+
+            Admin：
+            權限設定 → 匯出總表下方
+            匯出資料 → OSAI 下方
+            匯入資料 → 登出下方
+        ===================================================== */}
+<div className="header-data-actions">
+
+    {/*
+     * JSON 載入 input 固定保留於 Header。
+     *
+     * Viewer：
+     * 載入預覽
+     *
+     * Editor：
+     * 載入資料
+     *
+     * Admin：
+     * 匯入資料
+     *
+     * 僅移動 DOM 位置，
+     * 原本 importDatabase 邏輯完全不變。
+     */}
+    <input
+        type="file"
+        accept=".json"
+        onChange={(event) =>
+            importDatabase(
+                event,
+                canImportData()
+                    ? 'import'
+                    : 'preview'
+            )
         }
+        className="hidden"
+        ref={fileInputRef}
+    />
 
-        ${
-            isEditor && !isAdmin
-                ? 'col-span-2 sm:col-auto'
-                : ''
-        }
-    `}
->
-    <i
-        className={
-            isAdmin || isEditor
-                ? 'fas fa-right-from-bracket'
-                : 'fas fa-lock'
-        }
-    ></i>
 
-    <span>
-        {isAdmin || isEditor
-            ? '登出系統'
-            : '權限登入'}
-    </span>
-</button>
+    {/* 管理者權限設定 */}
+            {isAdmin && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        setDraftEditorEnabled(
+                            DEFAULT_EDITOR_ENABLED
+                        );
 
-{isAdmin && (
-<button
-onClick={() => {
-setDraftEditorEnabled(
-    DEFAULT_EDITOR_ENABLED
-);
+                        setShowPermissionSettingsModal(
+                            true
+                        );
 
-    setShowPermissionSettingsModal(true);
-    setChangeError('');
-    setOldPasswordInput('');
-    setNewAdminPasswordInput('');
-    setNewEditorPasswordInput('');
-}}
-    className="header-settings-btn flex items-center justify-center w-full sm:w-12 gap-1.5 sm:gap-0 py-2 sm:py-2.5 bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-black hover:bg-slate-800 transition-all"
->
-        <i className="fas fa-gear"></i>
-        <span className="sm:hidden">權限設定</span>
-    </button>
-)}
+                        setChangeError('');
+                        setOldPasswordInput('');
+                        setNewAdminPasswordInput('');
+                        setNewEditorPasswordInput('');
+                    }}
+                    className="
+                        header-settings-btn
+                        flex items-center justify-center
+                        text-white
+                    "
+                    aria-label="權限與密碼設定"
+                >
+                    <i
+                        className="fas fa-gear"
+                        aria-hidden="true"
+                    ></i>
+
+                    <span>
+                        權限設定
+                    </span>
+                </button>
+            )}
+
+
+{/* 匯出資料：
+    Editor / Admin 依原權限顯示 */}
+{canExportBackupData() && (
+                <button
+                    type="button"
+                    onClick={openDataExportModal}
+                    className="
+                        header-data-btn
+                        header-export-data-btn
+                    "
+                >
+                    <i
+                        className="fas fa-share-nodes"
+                        aria-hidden="true"
+                    ></i>
+
+                    <span>
+                        匯出資料
+                    </span>
+                </button>
+            )}
+
+
+{/* 載入預覽／退出預覽／載入資料／匯入資料：
+    保留原有權限判斷與 onClick */}
+{(canImportData() || canLoadPreviewData()) && (
+
+                <button
+                    type="button"
+                    onClick={() => {
+
+                        /*
+                         * Viewer 已在預覽模式：
+                         * 同一顆按鈕改成退出預覽。
+                         */
+                        if (
+                            !canImportData() &&
+                            isPreviewDataMode
+                        ) {
+                            exitPreviewMode();
+                            return;
+                        }
+
+                        fileInputRef.current?.click();
+                    }}
+                    className="
+                        header-data-btn
+                        header-import-data-btn
+                    "
+                >
+                    <i
+                        className={
+                            !canImportData() &&
+                            isPreviewDataMode
+                                ? 'fas fa-eye-slash'
+                                : 'fas fa-file-import'
+                        }
+                        aria-hidden="true"
+                    ></i>
+
+                    <span>
+                        {
+                            isAdmin
+                                ? '匯入資料'
+
+                                : isEditor
+                                    ? '載入資料'
+
+                                    : isPreviewDataMode
+                                        ? '退出預覽'
+
+                                        : '載入預覽'
+                        }
+                    </span>
+                </button>
+            )}
+
+        </div>
+
+    </div>
+
 </div>
-                        </div>
                     </header>
 
 {isSyncing && (
@@ -20041,13 +21817,6 @@ setDraftEditorEnabled(
                                         </div>
                                         <div className="flex flex-col gap-3 sm:gap-4 items-stretch sm:items-end">
 <div className="flex items-center justify-end gap-2 sm:gap-3 db-controls">
-<input 
-    type="file" 
-    accept=".json" 
-    onChange={(event) => importDatabase(event, canImportData() ? 'import' : 'preview')} 
-    className="hidden" 
-    ref={fileInputRef} 
-/>
 
 {isAdmin && !isPreviewDataMode && (
     <>
@@ -20062,7 +21831,7 @@ setDraftEditorEnabled(
 
 data-tooltip={
     isMonitorEditMode
-        ? '完成編輯'
+        ? '檢視'
         : '編輯'
 }
 
@@ -20097,68 +21866,13 @@ data-tooltip={
 <button 
     onClick={handleAdminSyncIdentification}
     data-tooltip="同步鑑別"
-    className="system-tooltip-btn w-10 h-10 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all shadow-md flex items-center justify-center"
+    className="system-tooltip-btn monitor-sync-icon-btn w-10 h-10 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all shadow-md flex items-center justify-center"
 >
         <i className="fas fa-arrows-rotate"></i>
     </button>
 )}
 
-{canExportBackupData() && (
-<button
-    type="button"
-    onClick={openDataExportModal}
-    className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
->
-        <i className="fas fa-share-nodes"></i>
-        匯出資料
-    </button>
-)}
 
-
-{(canImportData() || canLoadPreviewData()) && (
-    <button
-        type="button"
-        onClick={() => {
-
-            /*
-             * Viewer 已在預覽模式：
-             * 同一顆按鈕改成退出預覽。
-             */
-            if (
-                !canImportData() &&
-                isPreviewDataMode
-            ) {
-                exitPreviewMode();
-                return;
-            }
-
-            fileInputRef.current?.click();
-        }}
-className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[11px] sm:text-xs font-black hover:bg-slate-700 transition-all shadow-md flex items-center gap-1.5 sm:gap-2"
-    >
-        <i
-            className={
-                !canImportData() &&
-                isPreviewDataMode
-                    ? 'fas fa-eye-slash'
-                    : 'fas fa-file-import'
-            }
-        ></i>
-
-        {
-            isAdmin
-                ? '匯入資料'
-
-                : isEditor
-                    ? '載入資料'
-
-                    : isPreviewDataMode
-                        ? '退出預覽'
-
-                        : '載入預覽'
-        }
-    </button>
-)}
 </div>
 
                                             <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
@@ -20195,9 +21909,9 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
                                                 <div key={law.id} className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all flex flex-col lg:flex-row lg:items-center justify-between law-card-glow gap-4 sm:gap-8 relative group mobile-card-tight">
                                                     <div className="flex gap-3 sm:gap-6 items-start sm:items-center flex-1">
                                                         <div className="relative shrink-0 flex flex-col items-center gap-2">
-                                                            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center shadow-lg bg-orange-400 text-white">
-                                                                <span className="text-xs sm:text-sm font-black tracking-tight">{index + 1}</span>
-                                                            </div>
+<div className="law-index-frame w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center shadow-lg bg-orange-400 text-white">
+    <span className="text-xs sm:text-sm font-black tracking-tight">{index + 1}</span>
+</div>
                                                             {canEditLawMonitor() && (
                                                                 <div className="flex flex-col gap-1">
                                                                     <button 
@@ -20315,26 +22029,40 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
             : 'grid-cols-1'
 } w-full lg:w-auto lg:flex items-center gap-2 sm:gap-4 shrink-0 ml-0 lg:ml-0`}>
 {canDeleteLawMonitor() && (
-    <button 
+    <button
         onClick={() => removeLaw(law.id)}
-                                                                className="w-11 h-11 sm:w-10 sm:h-10 justify-self-start rounded-xl sm:rounded-2xl bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center"
-                                                                title="移除此法規"
-                                                            >
-                                                                <i className="fas fa-trash-alt"></i>
-                                                            </button>
-                                                        )}
+        className="regulation-trash-btn w-11 h-11 sm:w-10 sm:h-10 justify-self-start rounded-xl sm:rounded-2xl transition flex items-center justify-center"
+        title="移除此法規"
+    >
+        <i
+            className="fas fa-trash"
+            aria-hidden="true"
+        ></i>
+    </button>
+)}
 {canViewCompareDetail() && (
     <button 
-        onClick={() => startSync(law)} className={`w-full ${
-    isAdmin
-        ? 'lg:w-32'
-        : canConfirmIdentification()
-            ? 'lg:w-36'
-            : 'lg:w-52'
-} px-3 sm:px-4 py-3 sm:py-3 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm transition-all active:scale-95 flex items-center justify-center ${isLawDiff ? 'bg-rose-600 text-white shadow-xl shadow-rose-600/30 hover:bg-rose-700 animate-pulse border-none' : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'}`}
-        
+        onClick={() => startSync(law)}
+        className={`w-full ${
+            isAdmin
+                ? 'lg:w-32'
+                : canConfirmIdentification()
+                    ? 'lg:w-36'
+                    : 'lg:w-52'
+        } px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 ${
+            isLawDiff
+                ? 'bg-rose-600 text-white shadow-xl shadow-rose-600/30 hover:bg-rose-700 animate-pulse border-none'
+                : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+        }`}
     >
-        比對詳情
+<i
+    className="fas fa-magnifying-glass"
+    aria-hidden="true"
+></i>
+
+        <span>
+            比對詳情
+        </span>
     </button>
 )}
 {canConfirmIdentification() && (
@@ -20342,19 +22070,26 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
         onClick={() => handleSingleSync(law.id)}
         className={`system-tooltip-btn w-full ${
             isAdmin ? 'lg:w-32' : 'lg:w-36'
-        } px-3 sm:px-4 py-3 sm:py-3 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm shadow-xl transition-all duration-200 transform active:scale-95 flex items-center justify-center ${
+        } px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm shadow-xl transition-all duration-200 transform active:scale-95 flex items-center justify-center gap-1.5 ${
             isLawDiff
                 ? 'bg-blue-600 text-white shadow-blue-600/30 hover:bg-blue-700 hover:scale-105'
                 : 'bg-slate-300 shadow-none cursor-default text-slate-500'
         }`}
         disabled={!isLawDiff}
         data-tooltip={
-    isLawDiff
-        ? '完成鑑別'
-        : '目前已完成鑑別'
-}
+            isLawDiff
+                ? '完成鑑別'
+                : '目前已完成鑑別'
+        }
     >
-        完成鑑別
+        <i
+            className="fas fa-clipboard-check"
+            aria-hidden="true"
+        ></i>
+
+        <span>
+            完成鑑別
+        </span>
     </button>
 )}
                                                     </div>
@@ -20401,11 +22136,11 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
             ? '切換為鑑別工作台檢視模式'
             : '進入鑑別工作台編輯模式'
     }
-    data-tooltip={
-        isWorkbenchEditMode
-            ? '完成編輯'
-            : '編輯'
-    }
+data-tooltip={
+    isWorkbenchEditMode
+        ? '檢視'
+        : '編輯'
+}
     className={`system-tooltip-btn edit-toggle-icon-btn ${
         isWorkbenchEditMode
             ? 'is-editing'
@@ -20462,13 +22197,19 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
     {/* 列印報告：桌機與手機橫式排在最前面；
         手機直式仍位於下方操作列第一個 */}
     {canPrintReport() && (
-        <button
-            onClick={() => window.print()}
-            className="workbench-action-btn bg-white border border-slate-200 text-slate-600 font-black transition-all hover:bg-slate-50 active:scale-95"
-        >
-            <i className="fas fa-print mr-2"></i>
-            列印報告
-        </button>
+<button
+    onClick={() => window.print()}
+    className="workbench-action-btn workbench-equal-action-btn workbench-print-btn font-black transition-all active:scale-95"
+>
+    <i
+        className="fas fa-print"
+        aria-hidden="true"
+    ></i>
+
+    <span>
+        列印報告
+    </span>
+</button>
     )}
 
     {/* 桌機與手機橫式：編輯、儲存排在列印報告後面 */}
@@ -20482,11 +22223,11 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
             ? '切換為鑑別工作台檢視模式'
             : '進入鑑別工作台編輯模式'
     }
-    data-tooltip={
-        isWorkbenchEditMode
-            ? '完成編輯'
-            : '編輯'
-    }
+data-tooltip={
+    isWorkbenchEditMode
+        ? '檢視'
+        : '編輯'
+}
     className={`system-tooltip-btn edit-toggle-icon-btn ${
         isWorkbenchEditMode
             ? 'is-editing'
@@ -20530,16 +22271,27 @@ className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white rounded-xl text-[
                 );
             }}
 disabled={selectedLawCheckedToday}
-className={`workbench-action-btn font-black shadow-xl transition-all active:scale-95 ${
+className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl transition-all active:scale-95 ${
     selectedLawCheckedToday
         ? 'bg-slate-300 text-slate-500 shadow-none cursor-default'
         : 'bg-blue-600 text-white hover:bg-blue-700'
 }`}
 >
-            {selectedLawCheckedToday
-                ? '今日已鑑別'
-                : '完成鑑別'}
-        </button>
+    <i
+        className={`fas ${
+            selectedLawCheckedToday
+                ? 'fa-circle-check'
+                : 'fa-clipboard-check'
+        }`}
+        aria-hidden="true"
+    ></i>
+
+    <span>
+        {selectedLawCheckedToday
+            ? '今日已鑑別'
+            : '完成鑑別'}
+    </span>
+</button>
     )}
 </div>
                                             </div>
@@ -20583,13 +22335,17 @@ className={`workbench-action-btn font-black shadow-xl transition-all active:scal
                                                             <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                                                                 <td className="px-8 py-6 text-center">
 {canDeleteDetailRows() ? (
-    <button 
+    <button
         onClick={() => removeDetailRow(selectedLaw.id, idx)}
-                                                                            className="compare-delete-btn bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center row-action-btn"
-                                                                        >
-                                                                            <i className="fas fa-trash-alt"></i>
-                                                                        </button>
-                                                                    ) : (
+        className="compare-delete-btn regulation-trash-btn transition flex items-center justify-center row-action-btn"
+        aria-label="移除此條文"
+    >
+        <i
+            className="fas fa-trash"
+            aria-hidden="true"
+        ></i>
+    </button>
+) : (
                                                                         <span className="font-bold text-slate-400">{idx + 1}</span>
                                                                     )}
                                                                 </td>
@@ -20701,13 +22457,19 @@ className={`workbench-action-btn font-black shadow-xl transition-all active:scal
     <div className="mb-3">
         <button
             onClick={() => removeDetailRow(selectedLaw.id, idx)}
-                        className="w-full py-2 rounded-xl bg-rose-50 text-rose-500 text-xs font-black hover:bg-rose-500 hover:text-white transition-all row-action-btn"
-                    >
-                        <i className="fas fa-trash-alt mr-2"></i>
-                        移除此條文
-                    </button>
-                </div>
-            )}
+            className="regulation-trash-text-btn w-full py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 row-action-btn"
+        >
+            <i
+                className="fas fa-trash"
+                aria-hidden="true"
+            ></i>
+
+            <span>
+                移除此條文
+            </span>
+        </button>
+    </div>
+)}
 
             <div className="space-y-3">
                 <div>
