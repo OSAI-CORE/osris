@@ -2040,6 +2040,59 @@ header .mobile-hide.sm\:block {
 
 }
 
+/* =========================================================
+   監控清單－回到頂端浮動按鈕
+
+   外觀沿用鑑別工作台浮動返回按鈕。
+   桌機 Hover 時只向右展開，
+   手機維持精簡「頂端」。
+========================================================= */
+
+.monitor-top-btn {
+    animation:
+        monitorTopFadeIn
+        0.18s
+        ease-out;
+}
+
+
+@keyframes monitorTopFadeIn {
+
+    from {
+        opacity:
+            0;
+    }
+
+    to {
+        opacity:
+            1;
+    }
+
+}
+
+
+/*
+ * 「回到頂端」文字較短，
+ * 桌機展開寬度稍微收窄。
+ */
+@media screen and (min-width: 951px)
+       and (hover: hover)
+       and (pointer: fine) {
+
+    .monitor-top-btn:hover,
+    .monitor-top-btn:focus-visible {
+        width:
+            132px;
+
+        min-width:
+            132px;
+
+        max-width:
+            132px;
+    }
+
+}
+
 @media print {
     @page {
         size: A4 portrait;
@@ -2731,6 +2784,31 @@ footer,
         text-size-adjust:
             100% !important;
     }
+}
+
+/* =========================================================
+   監控清單－手機直式法規類型編輯選單
+
+   保留 16px 防 Safari 自動放大，
+   僅收斂字重、行高與內距，
+   避免相較周圍資訊顯得過大。
+========================================================= */
+
+@media screen
+and (orientation: portrait)
+and (max-width: 767px) {
+
+    .law-type-select {
+        font-weight:
+            700 !important;
+
+        line-height:
+            1.1 !important;
+
+        padding:
+            3px 6px !important;
+    }
+
 }
 
 /* =========================================================
@@ -4050,9 +4128,16 @@ const MASTER_RECOVERY_CODE =
             const [isSyncing, setIsSyncing] = useState(false);
             const [syncText, setSyncText] = useState('正在執行鑑別程序...');
             const [selectedLaw, setSelectedLaw] = useState(null);
-            const [searchQuery, setSearchQuery] = useState('');
-            const [filterType, setFilterType] = useState('全部');
-            const [currentTime, setCurrentTime] = useState(new Date());
+const [searchQuery, setSearchQuery] = useState('');
+const [filterType, setFilterType] = useState('全部');
+const [currentTime, setCurrentTime] = useState(new Date());
+
+/*
+ * 監控清單往下捲動一定距離後，
+ * 顯示「回到頂端」浮動按鈕。
+ */
+const [showMonitorTopButton, setShowMonitorTopButton] =
+    useState(false);
 
 /*
  * 兩個區域分開管理編輯模式：
@@ -16135,6 +16220,64 @@ useEffect(() => {
     });
 }, [activeTab, selectedLaw?.id]);            
 
+/*
+ * 監控清單：
+ * 平滑回到頁面最上方。
+ */
+const handleMonitorScrollToTop = () => {
+    window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'smooth'
+    });
+};
+
+
+/*
+ * 監控清單往下捲動超過 560px 後，
+ * 才顯示「回到頂端」浮動按鈕。
+ *
+ * 離開監控清單時自動隱藏。
+ */
+useEffect(() => {
+
+    const handleMonitorScroll = () => {
+
+        if (activeTab !== 'monitor') {
+            setShowMonitorTopButton(false);
+            return;
+        }
+
+        const scrollTop =
+            window.scrollY ||
+            document.documentElement.scrollTop ||
+            document.body.scrollTop ||
+            0;
+
+        setShowMonitorTopButton(
+            scrollTop > 560
+        );
+    };
+
+    handleMonitorScroll();
+
+    window.addEventListener(
+        'scroll',
+        handleMonitorScroll,
+        {
+            passive: true
+        }
+    );
+
+    return () => {
+        window.removeEventListener(
+            'scroll',
+            handleMonitorScroll
+        );
+    };
+
+}, [activeTab]);
+
             const todayDateString = getTodayDateString();
 
 const selectedLawCheckedToday =
@@ -22417,9 +22560,35 @@ setDraftEditorEnabled(
 
                     <main className="flex-1 p-4 sm:p-8 md:p-12 overflow-y-auto main-container">
                         <div className="max-w-6xl mx-auto">
-                            {activeTab === 'monitor' ? (
-                                <div className="fade-in space-y-4 sm:space-y-8">
-                                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
+{activeTab === 'monitor' ? (
+    <div className="fade-in space-y-4 sm:space-y-8">
+
+        {/* 監控清單－回到頂端浮動按鈕 */}
+        {showMonitorTopButton && (
+            <button
+                type="button"
+                onClick={handleMonitorScrollToTop}
+                className="monitor-top-btn floating-back-btn back-nav-btn"
+                aria-label="回到頁面頂端"
+            >
+                <span
+                    className="floating-back-icon"
+                    aria-hidden="true"
+                >
+                    <i className="fas fa-chevron-up"></i>
+                </span>
+
+                <span className="floating-back-label-desktop">
+                    回到頂端
+                </span>
+
+                <span className="floating-back-label-mobile">
+                    頂端
+                </span>
+            </button>
+        )}
+
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
                                         <div>
                                             <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">法規動態監測</h2>
                                             <p className="text-slate-500 text-sm sm:text-base font-medium mt-1">系統正在即時比對全國法規資料庫之最新修訂內容</p>
@@ -22568,11 +22737,11 @@ data-tooltip={
                                                                 )}
                                                                 
 {canEditLawMonitor() ? (
-    <select 
-                                                                        className="text-[10px] font-black bg-white text-blue-600 px-2 py-1 rounded-lg border border-blue-200 uppercase outline-none"
-                                                                        value={law.type}
-                                                                        onChange={(e) => updateLawField(law.id, 'type', e.target.value)}
-                                                                    >
+<select 
+    className="law-type-select text-[10px] font-black bg-white text-blue-600 px-2 py-1 rounded-lg border border-blue-200 uppercase outline-none"
+    value={law.type}
+    onChange={(e) => updateLawField(law.id, 'type', e.target.value)}
+>
                                                                         <option value="法律">法律</option>
                                                                         <option value="法規命令">法規命令</option>
                                                                         <option value="行政規則">行政規則</option>
@@ -23158,9 +23327,9 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
                 </div>
 
                 <div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                        新版條文
-                    </div>
+<div className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">
+    新版條文
+</div>
 
                     {canEditDetailRows() ? (
                         <textarea
