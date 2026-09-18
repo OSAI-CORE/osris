@@ -3757,34 +3757,6 @@ and (max-width: 950px) {
 }
 
 /* =========================================================
-   手機直式
-   比照證照管理系統：
-   1. 全部純圖示
-   2. 所有功能平均分配成單排
-========================================================= */
-
-@media screen
-and (orientation: portrait)
-and (max-width: 767px) {
-
-    .header-button-grid {
-        width:
-            100% !important;
-
-        display:
-            grid !important;
-
-        align-items:
-            center !important;
-
-        justify-content:
-            stretch !important;
-
-        gap:
-            4px !important;
-    }
-
-/* =========================================================
    監控清單－手機橫式編輯欄位文字比例
 
    保留實際 16px，
@@ -3867,7 +3839,35 @@ and (max-width: 950px) {
             -6px !important;
     }
 
-}    
+}
+
+/* =========================================================
+   手機直式
+   比照證照管理系統：
+   1. 全部純圖示
+   2. 所有功能平均分配成單排
+========================================================= */
+
+@media screen
+and (orientation: portrait)
+and (max-width: 767px) {
+
+    .header-button-grid {
+        width:
+            100% !important;
+
+        display:
+            grid !important;
+
+        align-items:
+            center !important;
+
+        justify-content:
+            stretch !important;
+
+        gap:
+            4px !important;
+    } 
 
 
     /* Viewer：5 顆 */
