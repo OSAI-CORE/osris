@@ -2582,6 +2582,37 @@ footer,
     padding: 0 !important;
 }
 
+/* =========================================================
+   Cloud Center 垃圾桶圖示尺寸
+   比照證照管理系統固定 12px
+========================================================= */
+
+.cloud-tooltip-btn > .fa-trash {
+    font-size:
+        12px !important;
+
+    line-height:
+        1 !important;
+
+    width:
+        12px !important;
+
+    height:
+        12px !important;
+
+    display:
+        inline-flex !important;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    flex:
+        0 0 12px;
+}
+
 @media (hover: hover) and (pointer: fine) {
 
     .cloud-tooltip-btn::after {
@@ -2985,6 +3016,19 @@ and (max-width: 767px) {
     box-sizing: border-box !important;
 }
 
+/* 權限設定齒輪：比照證照管理系統固定 12px */
+.header-settings-btn i {
+    width: 12px !important;
+    min-width: 12px !important;
+    height: 12px !important;
+
+    font-size: 12px !important;
+    line-height: 12px !important;
+
+    flex: 0 0 12px !important;
+
+    margin: 0 !important;
+}
 
     .header-settings-btn span {
         display: none !important;
@@ -3375,14 +3419,43 @@ and (max-width: 950px) {
     }
 
 
-    .header-main-action-btn i,
-    .header-data-btn i {
-        font-size:
-            13px !important;
+/* 主功能圖示 */
+.header-main-action-btn i {
+    width: 13px !important;
+    min-width: 13px !important;
+    height: 13px !important;
 
-        line-height:
-            13px !important;
-    }
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    flex: 0 0 13px !important;
+
+    font-size: 13px !important;
+    line-height: 13px !important;
+
+    margin: 0 !important;
+}
+
+
+/* 資料操作圖示：
+   比照證照管理系統手機橫式 */
+.header-data-btn i {
+    width: 12px !important;
+    min-width: 12px !important;
+    height: 12px !important;
+
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    flex: 0 0 12px !important;
+
+    font-size: 12px !important;
+    line-height: 12px !important;
+
+    margin: 0 !important;
+}
 
 
     .header-role-viewer
@@ -3411,9 +3484,9 @@ and (max-width: 950px) {
     min-width: 34px !important;
     max-width: 34px !important;
 
-    height: 34px !important;
-    min-height: 34px !important;
-    max-height: 34px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
 
     padding: 0 !important;
 
@@ -3425,6 +3498,20 @@ and (max-width: 950px) {
     justify-self: end;
 }
 
+/* 手機橫式權限設定齒輪：
+   比照證照管理系統固定 12px */
+.header-settings-btn i {
+    width: 12px !important;
+    min-width: 12px !important;
+    height: 12px !important;
+
+    font-size: 12px !important;
+    line-height: 12px !important;
+
+    flex: 0 0 12px !important;
+
+    margin: 0 !important;
+}
 
     .header-settings-btn span {
         display:
@@ -3672,6 +3759,17 @@ and (max-width: 767px) {
             border-box !important;
     }
 
+/* =========================================================
+   手機直式 Header 按鈕圓角
+   強制比照證照管理系統固定 10px
+========================================================= */
+
+.header-button-grid .header-main-action-btn,
+.header-button-grid .header-data-btn,
+.header-button-grid .header-settings-btn {
+    border-radius:
+        10px !important;
+}    
 
     /*
      * 直式預覽只顯示圖示，
@@ -17784,10 +17882,9 @@ const isDeletingWorkspace =
         }}
 className="
     cloud-tooltip-btn
-    regulation-trash-btn
     w-7 h-7
     rounded-lg
-    transition
+    text-red-500
     flex
     items-center
     justify-center
@@ -18744,10 +18841,9 @@ aria-label={
                 }}
 className="
     cloud-tooltip-btn
-    regulation-trash-btn
     w-7 h-7
     rounded-lg
-    transition
+    text-red-500
     flex items-center justify-center
     disabled:cursor-wait
 "
