@@ -1447,25 +1447,24 @@ header .mobile-hide.sm\:block {
         line-height: 1.7;
     }
 
-    .mobile-compare-old {
-        color: #94a3b8;
-        background: #f8fafc;
-        border-left: 4px solid #cbd5e1;
-        text-decoration: line-through;
-        font-size: 13px;
-        padding: 10px;
-        border-radius: 0.75rem;
-    }
+.mobile-compare-old {
+    color: #64748b;
+    background: #f8fafc;
+    border-left: 4px solid #cbd5e1;
+    font-size: 13px;
+    padding: 10px;
+    border-radius: 0.75rem;
+}
 
-    .mobile-compare-new {
-        color: #1e293b;
-        background: #eff6ff;
-        border-left: 4px solid #3b82f6;
-        font-size: 14px;
-        font-weight: 500;
-        padding: 10px;
-        border-radius: 0.75rem;
-    }
+.mobile-compare-new {
+    color: #1e293b;
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px;
+    border-radius: 0.75rem;
+}
 
     .mobile-compare-card textarea {
         min-height: 120px;
@@ -1651,6 +1650,395 @@ header .mobile-hide.sm\:block {
 }
 
 }        
+
+/* =========================================================
+   鑑別工作台－浮動返回監控清單
+
+   桌機：
+   顯示「返回監控清單」
+
+   手機直式／橫式：
+   顯示精簡「返回」
+
+   僅提供另一個返回入口，
+   不修改原本返回、資料或權限邏輯。
+========================================================= */
+
+.floating-back-btn {
+    position:
+        fixed;
+
+    left:
+        22px;
+
+    bottom:
+        calc(
+            22px +
+            env(safe-area-inset-bottom, 0px)
+        );
+
+    z-index:
+        45;
+
+    display:
+        inline-flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    gap:
+        8px;
+
+    min-height:
+        44px;
+
+    padding:
+        0 16px 0 9px;
+
+    border:
+        1px solid #cbd5e1;
+
+    border-radius:
+        999px;
+
+    background:
+        rgba(255, 255, 255, 0.97);
+
+    color:
+        #475569;
+
+    font-size:
+        13px;
+
+    font-weight:
+        700;
+
+    letter-spacing:
+        0.01em;
+
+    line-height:
+        1;
+
+    white-space:
+        nowrap;
+
+    box-shadow:
+        0 8px 24px
+        rgba(15, 23, 42, 0.14);
+
+    cursor:
+        pointer;
+
+    transition:
+        background-color 0.18s ease,
+        border-color 0.18s ease,
+        color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+
+    -webkit-tap-highlight-color:
+        transparent;
+}
+
+
+/* 左側箭頭圓框 */
+.floating-back-icon {
+    width:
+        28px;
+
+    height:
+        28px;
+
+    flex:
+        0 0 28px;
+
+    display:
+        inline-flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    border-radius:
+        999px;
+
+    background:
+        #eff6ff;
+
+    color:
+        #2563eb;
+
+    font-size:
+        11px;
+
+    transition:
+        background-color 0.18s ease,
+        color 0.18s ease;
+}
+
+
+/* 桌機預設隱藏手機文字 */
+.floating-back-label-mobile {
+    display:
+        none;
+}
+
+
+/*
+ * 桌機完整文字預設保留於 DOM，
+ * 由桌機滑鼠模式控制淡入／淡出。
+ */
+.floating-back-label-desktop {
+    display:
+        inline-block;
+
+    max-width:
+        120px;
+
+    overflow:
+        hidden;
+
+    opacity:
+        1;
+
+    white-space:
+        nowrap;
+
+    transition:
+        max-width 0.22s ease,
+        opacity 0.16s ease,
+        transform 0.22s ease;
+}
+
+
+/* =========================================================
+   桌機滑鼠：
+   平常收合為箭頭圓鈕，
+   Hover／鍵盤 Focus 時展開完整文字。
+========================================================= */
+
+@media screen and (min-width: 951px)
+       and (hover: hover)
+       and (pointer: fine) {
+
+    /*
+     * 預設收合狀態：
+     * 只保留箭頭。
+     */
+    .floating-back-btn {
+        width:
+            44px;
+
+        min-width:
+            44px;
+
+        max-width:
+            44px;
+
+        padding:
+            0 7px;
+
+        gap:
+            0;
+
+        justify-content:
+            flex-start;
+
+        overflow:
+            hidden;
+
+        transition:
+            width 0.22s ease,
+            max-width 0.22s ease,
+            padding 0.22s ease,
+            gap 0.22s ease,
+            background-color 0.18s ease,
+            border-color 0.18s ease,
+            color 0.18s ease,
+            box-shadow 0.18s ease,
+            transform 0.18s ease;
+    }
+
+
+    /*
+     * 收合時隱藏完整文字。
+     */
+    .floating-back-label-desktop {
+        max-width:
+            0;
+
+        opacity:
+            0;
+
+        transform:
+            translateX(-4px);
+
+        pointer-events:
+            none;
+    }
+
+
+    /*
+     * 滑鼠靠近或鍵盤聚焦：
+     * 平滑展開。
+     */
+.floating-back-btn:hover,
+.floating-back-btn:focus-visible {
+    width:
+        158px;
+
+    min-width:
+        158px;
+
+    max-width:
+        158px;
+
+    padding:
+        0 14px 0 7px;
+
+    gap:
+        8px;
+
+    background:
+        #ffffff;
+
+    border-color:
+        #93c5fd;
+
+    color:
+        #2563eb;
+
+    box-shadow:
+        0 10px 28px
+        rgba(15, 23, 42, 0.18);
+
+    transform:
+        none;
+}
+
+
+    /*
+     * 展開後顯示完整文字。
+     */
+    .floating-back-btn:hover
+    .floating-back-label-desktop,
+    .floating-back-btn:focus-visible
+    .floating-back-label-desktop {
+        max-width:
+            120px;
+
+        opacity:
+            1;
+
+        transform:
+            translateX(0);
+    }
+
+
+    /*
+     * 展開時箭頭改為藍底白色。
+     */
+    .floating-back-btn:hover
+    .floating-back-icon,
+    .floating-back-btn:focus-visible
+    .floating-back-icon {
+        background:
+            #2563eb;
+
+        color:
+            #ffffff;
+    }
+
+}
+
+
+/* 點擊回饋 */
+.floating-back-btn:active {
+    transform:
+        scale(0.97);
+}
+
+
+/* 鍵盤操作焦點 */
+.floating-back-btn:focus-visible {
+    outline:
+        3px solid
+        rgba(37, 99, 235, 0.22);
+
+    outline-offset:
+        3px;
+}
+
+
+/* =========================================================
+   手機直式／手機橫式
+
+   按鈕縮小，
+   文字改為「返回」。
+========================================================= */
+
+@media screen and (max-width: 950px) {
+
+    .floating-back-btn {
+        left:
+            14px;
+
+        bottom:
+            calc(
+                14px +
+                env(safe-area-inset-bottom, 0px)
+            );
+
+        min-height:
+            42px;
+
+        gap:
+            7px;
+
+        padding:
+            0 13px 0 8px;
+
+        font-size:
+            12px;
+
+        box-shadow:
+            0 7px 20px
+            rgba(15, 23, 42, 0.16);
+    }
+
+
+    .floating-back-icon {
+        width:
+            26px;
+
+        height:
+            26px;
+
+        flex:
+            0 0 26px;
+
+        font-size:
+            10px;
+    }
+
+
+    .floating-back-label-desktop {
+        display:
+            none;
+    }
+
+
+    .floating-back-label-mobile {
+        display:
+            inline;
+    }
+
+}
 
 @media print {
     @page {
@@ -22108,16 +22496,16 @@ data-tooltip={
                                                         </button>
                                                     ))}
                                                 </div>
-                                                <div className="relative w-full sm:w-auto">
-                                                    <i className="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                                                    <input 
-                                                        type="text" 
-                                                        placeholder="快速搜尋法規名稱或 Pcode..." 
-                                                        className="pl-12 sm:pl-14 pr-4 sm:pr-6 py-3 sm:py-4 bg-white border border-slate-200 rounded-2xl text-sm sm:text-base w-full md:w-80 focus:ring-4 focus:ring-blue-500/10 outline-none shadow-sm transition-all"
-                                                        value={searchQuery}
-                                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                                    />
-                                                </div>
+<div className="relative w-full sm:w-auto">
+    <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+    <input 
+        type="text" 
+        placeholder="快速搜尋法規名稱或 Pcode..." 
+        className="pl-10 pr-4 h-11 sm:h-10 bg-white border border-slate-200 rounded-xl text-sm w-full md:w-72 focus:ring-2 focus:ring-blue-500/10 outline-none shadow-sm transition-all"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+    />
+</div>
                                             </div>
                                         </div>
                                     </div>
@@ -22216,12 +22604,12 @@ data-tooltip={
                                                                     {canEditLawMonitor() ? (
                                                                         <input 
                                                                             type="date"
-                                                                            className={`text-sm font-black admin-input ${isLawDiff ? 'text-rose-500' : 'text-emerald-700'}`}
+                                                                            className={`text-sm font-bold admin-input ${isLawDiff ? 'text-rose-500' : 'text-emerald-700'}`}
                                                                             value={law.localCheckDate}
                                                                             onChange={(e) => updateLawField(law.id, 'localCheckDate', e.target.value)}
                                                                         />
                                                                     ) : (
-                                                                        <span className={`text-sm font-black ${isLawDiff ? 'text-rose-500' : 'text-emerald-700'}`}>
+                                                                        <span className={`text-sm font-bold ${isLawDiff ? 'text-rose-500' : 'text-emerald-700'}`}>
                                                                             {law.localCheckDate}
                                                                         </span>
                                                                     )}
@@ -22336,7 +22724,30 @@ data-tooltip={
 >
                                         <i className="fas fa-chevron-left transition-transform group-hover:-translate-x-1"></i> 返回監控清單
                                     </button>
-                                    
+
+{/* 鑑別工作台浮動返回按鈕 */}
+<button
+    type="button"
+    onClick={handleBackToMonitor}
+    className="floating-back-btn back-nav-btn"
+    aria-label="返回監控清單"
+>
+    <span
+        className="floating-back-icon"
+        aria-hidden="true"
+    >
+        <i className="fas fa-chevron-left"></i>
+    </span>
+
+    <span className="floating-back-label-desktop">
+        返回監控清單
+    </span>
+
+    <span className="floating-back-label-mobile">
+        返回
+    </span>
+</button>                                    
+
                                     <div className="bg-white rounded-3xl sm:rounded-[3rem] shadow-xl sm:shadow-2xl border border-slate-200 overflow-hidden workbench-card mobile-workbench-tight">
                                         <div className="p-4 sm:p-12 border-b border-slate-100 bg-slate-50/50 mobile-section-tight">
                                             <div className="workbench-header-layout flex flex-col md:flex-row justify-between items-start md:items-end gap-6 md:gap-10">
@@ -22399,7 +22810,7 @@ data-tooltip={
     <span className="workbench-date-label font-bold text-slate-400 block uppercase mb-1">
         最新公佈日
     </span>
-    <span className={`workbench-date-value font-black ${checkLawDiff(selectedLaw?.remoteDate, selectedLaw?.localCheckDate) ? 'text-rose-600' : 'text-slate-700'}`}>
+    <span className={`workbench-date-value font-bold ${checkLawDiff(selectedLaw?.remoteDate, selectedLaw?.localCheckDate) ? 'text-rose-600' : 'text-slate-700'}`}>
         {selectedLaw?.remoteDate}
     </span>
 </div>
@@ -22407,7 +22818,7 @@ data-tooltip={
     <span className="workbench-date-label font-bold text-slate-400 block uppercase mb-1">
         最近鑑別/登錄日
     </span>
-    <span className="workbench-date-value font-black text-emerald-600">
+    <span className="workbench-date-value font-bold text-emerald-600">
         {selectedLaw?.localCheckDate}
     </span>
 </div>
@@ -22537,16 +22948,16 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
     <table className="compare-table w-full text-left border-collapse">
                                                     <thead>
                                                         <tr className="bg-slate-50 border-b border-slate-200">
-<th className="font-black text-slate-500 uppercase tracking-widest w-20 text-center">
+<th className="font-bold text-slate-500 uppercase tracking-wide w-20 text-center">
     操作
 </th>
-<th className="font-black text-slate-500 uppercase tracking-widest w-36">
+<th className="font-bold text-slate-500 uppercase tracking-wide w-36">
     條號
 </th>
-<th className="font-black text-slate-500 uppercase tracking-widest">
+<th className="font-bold text-slate-500 uppercase tracking-wide">
     條文比對 (舊版 vs 新版)
 </th>
-<th className="font-black text-slate-500 uppercase tracking-widest w-44">
+<th className="font-bold text-slate-500 uppercase tracking-wide w-44">
     異動屬性
 </th>
                                                         </tr>
@@ -22570,10 +22981,10 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
                                                                         <span className="font-bold text-slate-400">{idx + 1}</span>
                                                                     )}
                                                                 </td>
-                                                                <td className="px-8 py-6 font-black text-blue-600">
+                                                                <td className="px-8 py-6 font-bold text-blue-600">
 {canEditDetailRows() ? (
     <textarea
-        className="admin-textarea-compact text-blue-600 font-black"
+        className="admin-textarea-compact text-blue-600 font-bold"
         value={row.no}
         onChange={(e) => updateDetailField(selectedLaw.id, idx, 'no', e.target.value)}
     />
@@ -22582,39 +22993,74 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
 )}
                                                                 </td>
                                                                 <td className="px-8 py-6">
-                                                                    <div className="space-y-4">
-                                                                        {canEditDetailRows() ? (
-                                                                            <div className="space-y-2">
-                                                                                <textarea 
-                                                                                    className="w-full text-slate-400 text-sm bg-slate-50 p-3 rounded-lg border-l-4 border-slate-200 line-through outline-none" 
-                                                                                    value={row.old}
-                                                                                    onChange={(e) => updateDetailField(selectedLaw.id, idx, 'old', e.target.value)}
-                                                                                />
-                                                                                <textarea 
-                                                                                    className="w-full text-slate-800 text-base font-medium p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50/30 outline-none" 
-                                                                                    value={row.new}
-                                                                                    onChange={(e) => updateDetailField(selectedLaw.id, idx, 'new', e.target.value)}
-                                                                                />
-                                                                            </div>
-                                                                        ) : (
-                                                                            <>
-                                                                                <div className="text-slate-400 text-sm bg-slate-50 p-3 rounded-lg border-l-4 border-slate-200 line-through">{row.old}</div>
-                                                                                <div className="text-slate-800 text-base font-medium p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50/30" dangerouslySetInnerHTML={{ __html: row.new }}></div>
-                                                                            </>
-                                                                        )}
-                                                                    </div>
+<div className="space-y-4">
+    {canEditDetailRows() ? (
+        <div className="space-y-3">
+
+            <div>
+                <div className="text-[11px] font-bold text-slate-400 tracking-wide mb-1">
+                    舊版條文
+                </div>
+
+                <textarea 
+                    className="w-full text-slate-500 text-sm bg-slate-50 p-3 rounded-lg border-l-4 border-slate-200 outline-none" 
+                    value={row.old}
+                    onChange={(e) => updateDetailField(selectedLaw.id, idx, 'old', e.target.value)}
+                />
+            </div>
+
+            <div>
+                <div className="text-[11px] font-bold text-blue-600 tracking-wide mb-1">
+                    新版條文
+                </div>
+
+                <textarea 
+                    className="w-full text-slate-800 text-sm font-medium p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50/30 outline-none" 
+                    value={row.new}
+                    onChange={(e) => updateDetailField(selectedLaw.id, idx, 'new', e.target.value)}
+                />
+            </div>
+
+        </div>
+    ) : (
+        <div className="space-y-3">
+
+            <div>
+                <div className="text-[11px] font-bold text-slate-400 tracking-wide mb-1">
+                    舊版條文
+                </div>
+
+                <div className="text-slate-500 text-sm bg-slate-50 p-3 rounded-lg border-l-4 border-slate-200">
+                    {row.old}
+                </div>
+            </div>
+
+            <div>
+                <div className="text-[11px] font-bold text-blue-600 tracking-wide mb-1">
+                    新版條文
+                </div>
+
+                <div
+                    className="text-slate-800 text-sm font-medium p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50/30"
+                    dangerouslySetInnerHTML={{ __html: row.new }}
+                ></div>
+            </div>
+
+        </div>
+    )}
+</div>
                                                                 </td>
                                                                 <td className="px-8 py-6">
 {canEditDetailRows() ? (
-    <textarea
-        className="admin-textarea-compact text-amber-700 font-black"
-        value={row.note}
-        onChange={(e) => updateDetailField(selectedLaw.id, idx, 'note', e.target.value)}
-    />
+<textarea
+    className="admin-textarea-compact text-sm text-amber-700 font-bold"
+    value={row.note}
+    onChange={(e) => updateDetailField(selectedLaw.id, idx, 'note', e.target.value)}
+/>
 ) : (
-    <span className="inline-block px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full text-xs font-black break-words">
-        {row.note}
-    </span>
+<span className="inline-block px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold break-words">
+    {row.note}
+</span>
 )}
                                                                 </td>
                                                             </tr>
@@ -22643,10 +23089,10 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                         條號
                     </div>
-                    <div className="text-base font-black text-blue-600 mt-1">
+                    <div className="text-base font-bold text-blue-600 mt-1">
                         {canEditDetailRows() ? (
 <textarea
-    className="admin-textarea-compact text-blue-600 font-black"
+    className="admin-textarea-compact text-blue-600 font-bold"
     value={row.no}
     onChange={(e) => updateDetailField(selectedLaw.id, idx, 'no', e.target.value)}
 />
@@ -22661,14 +23107,14 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
                     <div className="mt-1">
                         {canEditDetailRows() ? (
 <textarea
-    className="admin-textarea-compact text-amber-700 font-black"
+    className="admin-textarea-compact text-sm text-amber-700 font-bold"
     value={row.note}
     onChange={(e) => updateDetailField(selectedLaw.id, idx, 'note', e.target.value)}
 />
                         ) : (
-                            <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-black">
-                                {row.note}
-                            </span>
+<span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">
+    {row.note}
+</span>
                         )}
                     </div>
                 </div>
