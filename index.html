@@ -3493,28 +3493,39 @@ and (max-width: 950px) {
 
 
 /* 資料操作按鈕：
-   稍微增加圖示與文字的呼吸空間 */
+   外框尺寸與上方主功能一致，
+   圖文排列比照證照管理系統 */
 .header-data-btn {
-    width: 100px !important;
-    min-width: 100px !important;
-    max-width: 100px !important;
+    width: 92px !important;
+    min-width: 92px !important;
+    max-width: 92px !important;
 
     height: 34px !important;
     min-height: 34px !important;
     max-height: 34px !important;
 
-    padding: 0 12px !important;
+    padding: 0 10px !important;
 
-    gap: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    gap: 6px !important;
 
     border-radius:
         11px !important;
+
+    box-sizing:
+        border-box !important;
 
     font-size:
         11px !important;
 
     font-weight:
         900 !important;
+
+    line-height:
+        1 !important;
 
     white-space:
         nowrap !important;
@@ -3563,21 +3574,19 @@ and (max-width: 950px) {
 .header-role-viewer
 .header-data-actions {
     grid-template-columns:
-        100px;
+        92px;
 }
-
 
 .header-role-editor
 .header-data-actions {
     grid-template-columns:
-        repeat(2, 100px);
+        repeat(2, 92px);
 }
-
 
 .header-role-admin
 .header-data-actions {
     grid-template-columns:
-        repeat(3, 100px);
+        repeat(3, 92px);
 }
 
 
@@ -3774,6 +3783,91 @@ and (max-width: 767px) {
         gap:
             4px !important;
     }
+
+/* =========================================================
+   監控清單－手機橫式編輯欄位文字比例
+
+   保留實際 16px，
+   避免 iPhone / Safari 聚焦時自動放大。
+
+   橫式視覺約 13px，
+   比直式 12px 稍大一階，
+   但維持相同資訊層級。
+========================================================= */
+
+@media screen
+and (orientation: landscape)
+and (max-width: 950px) {
+
+    /* PCode：16px × 0.8 ≈ 13px */
+    .monitor-pcode-input {
+        font-size:
+            16px !important;
+
+        line-height:
+            1.1 !important;
+
+        transform:
+            scale(0.8);
+
+        transform-origin:
+            left center;
+
+        margin-right:
+            -20% !important;
+    }
+
+
+    /* 全國法規公佈日／最近鑑別登錄日 */
+    .monitor-law-date-input {
+        font-size:
+            16px !important;
+
+        line-height:
+            1.1 !important;
+
+        transform:
+            scale(0.8);
+
+        transform-origin:
+            left center;
+
+        width:
+            125% !important;
+
+        margin-right:
+            -25% !important;
+    }
+
+
+    /* 法律／法規命令／行政規則 */
+    .law-type-select {
+        font-size:
+            16px !important;
+
+        font-weight:
+            700 !important;
+
+        line-height:
+            1.1 !important;
+
+        padding:
+            3px 6px !important;
+
+        transform:
+            scale(0.8);
+
+        transform-origin:
+            center center;
+
+        margin-left:
+            -6px !important;
+
+        margin-right:
+            -6px !important;
+    }
+
+}    
 
 
     /* Viewer：5 顆 */
