@@ -3051,6 +3051,59 @@ and (max-width: 767px) {
 }
 
 /* =========================================================
+   管理者／使用者 Header 登出系統
+
+   與證照管理系統統一配色：
+   一般  #9f1239
+   Hover #881337
+========================================================= */
+
+.header-role-admin
+.header-auth-btn,
+
+.header-role-editor
+.header-auth-btn {
+    background:
+        #9f1239 !important;
+
+    color:
+        #ffffff !important;
+
+    border-color:
+        #be123c !important;
+
+    box-shadow:
+        0 8px 20px
+        rgba(159, 18, 57, 0.24) !important;
+}
+
+
+/* 桌機滑鼠 Hover */
+@media (hover: hover)
+       and (pointer: fine) {
+
+    .header-role-admin
+    .header-auth-btn:hover,
+
+    .header-role-editor
+    .header-auth-btn:hover {
+        background:
+            #881337 !important;
+
+        color:
+            #ffffff !important;
+
+        border-color:
+            #9f1239 !important;
+
+        box-shadow:
+            0 8px 20px
+            rgba(159, 18, 57, 0.28) !important;
+    }
+
+}
+
+/* =========================================================
    匯出總表
    完全比照證照管理系統
 ========================================================= */
