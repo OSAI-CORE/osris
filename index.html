@@ -2818,18 +2818,79 @@ footer,
 }
 
 /* =========================================================
-   監控清單－手機直式法規類型編輯選單
+   監控清單－手機直式編輯欄位文字比例
 
-   保留 16px 防 Safari 自動放大，
-   僅收斂字重、行高與內距，
-   避免相較周圍資訊顯得過大。
+   保留實際 16px，
+   避免 iPhone / Safari 聚焦時自動放大。
+
+   僅將畫面視覺比例縮小，
+   讓 PCode、日期及法規類型
+   與圖卡其他輔助資訊更協調。
 ========================================================= */
 
 @media screen
 and (orientation: portrait)
 and (max-width: 767px) {
 
+    /* -----------------------------------------
+       PCode
+       實際 16px，視覺約 12px
+    ----------------------------------------- */
+    .monitor-pcode-input {
+        font-size:
+            16px !important;
+
+        line-height:
+            1.1 !important;
+
+        transform:
+            scale(0.75);
+
+        transform-origin:
+            left center;
+
+        margin-right:
+            -25% !important;
+    }
+
+
+    /* -----------------------------------------
+       全國法規公佈日
+       最近鑑別／登錄日
+
+       實際 16px，視覺約 12px
+    ----------------------------------------- */
+    .monitor-law-date-input {
+        font-size:
+            16px !important;
+
+        line-height:
+            1.1 !important;
+
+        transform:
+            scale(0.75);
+
+        transform-origin:
+            left center;
+
+        width:
+            133.333% !important;
+
+        margin-right:
+            -33.333% !important;
+    }
+
+
+    /* -----------------------------------------
+       法規類型選單
+       法律／法規命令／行政規則
+
+       實際 16px，視覺約 12px
+    ----------------------------------------- */
     .law-type-select {
+        font-size:
+            16px !important;
+
         font-weight:
             700 !important;
 
@@ -2838,6 +2899,18 @@ and (max-width: 767px) {
 
         padding:
             3px 6px !important;
+
+        transform:
+            scale(0.75);
+
+        transform-origin:
+            center center;
+
+        margin-left:
+            -8px !important;
+
+        margin-right:
+            -8px !important;
     }
 
 }
@@ -3394,29 +3467,58 @@ and (max-width: 950px) {
     }
 
 
-    .header-main-action-btn,
-    .header-data-btn {
-        width: 92px !important;
-        min-width: 92px !important;
-        max-width: 92px !important;
+/* 主功能按鈕：維持原本手機橫式尺寸 */
+.header-main-action-btn {
+    width: 92px !important;
+    min-width: 92px !important;
+    max-width: 92px !important;
 
-        height: 34px !important;
-        min-height: 34px !important;
-        max-height: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
 
-        padding: 0 10px !important;
+    padding: 0 10px !important;
 
-        gap: 6px !important;
+    gap: 6px !important;
 
-        border-radius:
-            11px !important;
+    border-radius:
+        11px !important;
 
-        font-size:
-            11px !important;
+    font-size:
+        11px !important;
 
-        font-weight:
-            900 !important;
-    }
+    font-weight:
+        900 !important;
+}
+
+
+/* 資料操作按鈕：
+   稍微增加圖示與文字的呼吸空間 */
+.header-data-btn {
+    width: 100px !important;
+    min-width: 100px !important;
+    max-width: 100px !important;
+
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
+
+    padding: 0 12px !important;
+
+    gap: 8px !important;
+
+    border-radius:
+        11px !important;
+
+    font-size:
+        11px !important;
+
+    font-weight:
+        900 !important;
+
+    white-space:
+        nowrap !important;
+}
 
 
 /* 主功能圖示 */
@@ -3458,25 +3560,25 @@ and (max-width: 950px) {
 }
 
 
-    .header-role-viewer
-    .header-data-actions {
-        grid-template-columns:
-            92px;
-    }
+.header-role-viewer
+.header-data-actions {
+    grid-template-columns:
+        100px;
+}
 
 
-    .header-role-editor
-    .header-data-actions {
-        grid-template-columns:
-            repeat(2, 92px);
-    }
+.header-role-editor
+.header-data-actions {
+    grid-template-columns:
+        repeat(2, 100px);
+}
 
 
-    .header-role-admin
-    .header-data-actions {
-        grid-template-columns:
-            repeat(3, 92px);
-    }
+.header-role-admin
+.header-data-actions {
+    grid-template-columns:
+        repeat(3, 100px);
+}
 
 
 .header-settings-btn {
@@ -22911,9 +23013,9 @@ data-tooltip={
                                                                         />
                                                                         <div className="flex items-center gap-1">
                                                                             <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Pcode : </span>
-                                                                            <input 
-                                                                                className="text-[10px] font-bold text-slate-400 admin-input uppercase flex-1"
-                                                                                value={law.pcode}
+<input 
+    className="monitor-pcode-input text-[10px] font-bold text-slate-400 admin-input uppercase flex-1"
+    value={law.pcode}
                                                                                 onChange={(e) => updateLawField(law.id, 'pcode', e.target.value)}
                                                                                 placeholder="代碼"
                                                                             />
@@ -22947,9 +23049,9 @@ data-tooltip={
                                                                 <div className="flex flex-col min-w-[120px] sm:min-w-[140px]">
                                                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">全國法規公佈日</span>
 {canEditLawMonitor() ? (
-    <input 
-        type="date"
-                                                                            className={`text-sm font-bold admin-input ${isLawDiff ? 'text-rose-600' : 'text-blue-600'}`}
+<input 
+    type="date"
+    className={`monitor-law-date-input text-sm font-bold admin-input ${isLawDiff ? 'text-rose-600' : 'text-blue-600'}`}
                                                                             value={law.remoteDate}
                                                                             onChange={(e) => updateLawField(law.id, 'remoteDate', e.target.value)}
                                                                         />
@@ -22961,9 +23063,9 @@ data-tooltip={
                                                                 <div className="flex flex-col min-w-[120px] sm:min-w-[140px]">
                                                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">最近鑑別/登錄日</span>
                                                                     {canEditLawMonitor() ? (
-                                                                        <input 
-                                                                            type="date"
-                                                                            className={`text-sm font-bold admin-input ${isLawDiff ? 'text-rose-500' : 'text-emerald-700'}`}
+<input 
+    type="date"
+    className={`monitor-law-date-input text-sm font-bold admin-input ${isLawDiff ? 'text-rose-500' : 'text-emerald-700'}`}
                                                                             value={law.localCheckDate}
                                                                             onChange={(e) => updateLawField(law.id, 'localCheckDate', e.target.value)}
                                                                         />
