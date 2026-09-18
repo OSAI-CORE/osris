@@ -2915,6 +2915,112 @@ and (max-width: 950px) {
 }
 
 /* =========================================================
+   Desktop / Landscape
+   Header 主功能按鈕排序
+
+   Viewer：
+   匯出總表 → 雲端中心 → OSAI 平台 → 權限登入
+
+   Editor / Admin：
+   智能同步 → 匯出總表 → 雲端中心
+   → OSAI 平台 → 登出系統
+
+   僅調整桌機與手機橫式排列。
+   手機直式另有獨立排序，不受影響。
+
+   不修改任何按鈕功能、權限或資料邏輯。
+========================================================= */
+
+@media screen and (min-width: 951px),
+       screen and (orientation: landscape) and (max-width: 950px) {
+
+    /* =========================================
+       Viewer
+       ========================================= */
+
+    .header-role-viewer
+    .header-export-btn {
+        order: 1 !important;
+    }
+
+    .header-role-viewer
+    .header-cloud-btn {
+        order: 2 !important;
+    }
+
+    .header-role-viewer
+    .header-osai-btn {
+        order: 3 !important;
+    }
+
+    .header-role-viewer
+    .header-auth-btn {
+        order: 4 !important;
+    }
+
+
+    /* =========================================
+       Editor
+       ========================================= */
+
+    .header-role-editor
+    .header-sync-btn {
+        order: 1 !important;
+    }
+
+    .header-role-editor
+    .header-export-btn {
+        order: 2 !important;
+    }
+
+    .header-role-editor
+    .header-cloud-btn {
+        order: 3 !important;
+    }
+
+    .header-role-editor
+    .header-osai-btn {
+        order: 4 !important;
+    }
+
+    .header-role-editor
+    .header-auth-btn {
+        order: 5 !important;
+    }
+
+
+    /* =========================================
+       Admin
+       ========================================= */
+
+    .header-role-admin
+    .header-sync-btn {
+        order: 1 !important;
+    }
+
+    .header-role-admin
+    .header-export-btn {
+        order: 2 !important;
+    }
+
+    .header-role-admin
+    .header-cloud-btn {
+        order: 3 !important;
+    }
+
+    .header-role-admin
+    .header-osai-btn {
+        order: 4 !important;
+    }
+
+    .header-role-admin
+    .header-auth-btn {
+        order: 5 !important;
+    }
+
+}
+
+/* =========================================================
    Header 所有三方權限按鈕
    取消滑鼠 Hover 上浮效果
 
@@ -3092,160 +3198,261 @@ and (max-width: 767px) {
     }
 
 
-    /* -----------------------------------------
-       Viewer
+/* -----------------------------------------
+   Viewer
 
-       雲端中心
-       匯出總表
-       OSAI
-       權限登入
-       載入／退出預覽
-    ----------------------------------------- */
+   由左至右：
+   1. 權限登入
+   2. 匯出總表
+   3. 雲端中心
+   4. OSAI 平台
+   5. 載入／退出預覽
+----------------------------------------- */
 
-    .header-role-viewer
-    .header-cloud-btn {
-        order: 1 !important;
-        grid-column: auto !important;
-    }
+.header-role-viewer
+.header-auth-btn {
+    order: 1 !important;
+    grid-column: auto !important;
+}
 
-    .header-role-viewer
-    .header-export-btn {
-        order: 2 !important;
-        grid-column: auto !important;
-    }
+.header-role-viewer
+.header-export-btn {
+    order: 2 !important;
+    grid-column: auto !important;
+}
 
-    .header-role-viewer
-    .header-osai-btn {
-        order: 3 !important;
-        grid-column: auto !important;
-    }
+.header-role-viewer
+.header-cloud-btn {
+    order: 3 !important;
+    grid-column: auto !important;
+}
 
-    .header-role-viewer
-    .header-auth-btn {
-        order: 4 !important;
-        grid-column: auto !important;
-    }
+.header-role-viewer
+.header-osai-btn {
+    order: 4 !important;
+    grid-column: auto !important;
+}
 
-    .header-role-viewer
-    .header-import-data-btn {
-        order: 5 !important;
-        grid-column: auto !important;
-    }
-
-
-    /* -----------------------------------------
-       Editor
-
-       雲端中心
-       智能同步
-       匯出總表
-       OSAI
-       登出
-       匯出資料
-       載入資料
-    ----------------------------------------- */
-
-    .header-role-editor
-    .header-cloud-btn {
-        order: 1 !important;
-    }
-
-    .header-role-editor
-    .header-sync-btn {
-        order: 2 !important;
-    }
-
-    .header-role-editor
-    .header-export-btn {
-        order: 3 !important;
-    }
-
-    .header-role-editor
-    .header-osai-btn {
-        order: 4 !important;
-    }
-
-    .header-role-editor
-    .header-auth-btn {
-        order: 5 !important;
-        grid-column: auto !important;
-    }
-
-    .header-role-editor
-    .header-export-data-btn {
-        order: 6 !important;
-    }
-
-    .header-role-editor
-    .header-import-data-btn {
-        order: 7 !important;
-    }
+.header-role-viewer
+.header-import-data-btn {
+    order: 5 !important;
+    grid-column: auto !important;
+}
 
 
-    /* -----------------------------------------
-       Admin
+/* -----------------------------------------
+   Editor
 
-       雲端中心
-       智能同步
-       匯出總表
-       OSAI
-       登出
-       權限設定
-       匯出資料
-       匯入資料
-    ----------------------------------------- */
+   由左至右：
+   1. 登出系統
+   2. 匯出總表
+   3. 智能同步
+   4. 雲端中心
+   5. OSAI 平台
+   6. 匯出資料
+   7. 載入資料
+----------------------------------------- */
 
-    .header-role-admin
-    .header-cloud-btn {
-        order: 1 !important;
-    }
+.header-role-editor
+.header-auth-btn {
+    order: 1 !important;
+    grid-column: auto !important;
+}
 
-    .header-role-admin
-    .header-sync-btn {
-        order: 2 !important;
-    }
+.header-role-editor
+.header-export-btn {
+    order: 2 !important;
+}
 
-    .header-role-admin
-    .header-export-btn {
-        order: 3 !important;
-    }
+.header-role-editor
+.header-sync-btn {
+    order: 3 !important;
+}
 
-    .header-role-admin
-    .header-osai-btn {
-        order: 4 !important;
-    }
+.header-role-editor
+.header-cloud-btn {
+    order: 4 !important;
+}
 
-    .header-role-admin
-    .header-auth-btn {
-        order: 5 !important;
-    }
+.header-role-editor
+.header-osai-btn {
+    order: 5 !important;
+}
 
-    .header-role-admin
-    .header-settings-btn {
-        order: 6 !important;
+.header-role-editor
+.header-export-data-btn {
+    order: 6 !important;
+}
 
-        width:
-            100% !important;
+.header-role-editor
+.header-import-data-btn {
+    order: 7 !important;
+}
 
-        min-width:
-            0 !important;
 
-        max-width:
-            none !important;
+/* -----------------------------------------
+   Admin
 
-        justify-self:
-            stretch !important;
-    }
+   由左至右：
+   1. 登出系統
+   2. 權限設定
+   3. 匯出總表
+   4. 智能同步
+   5. 雲端中心
+   6. OSAI 平台
+   7. 匯出資料
+   8. 匯入資料
+----------------------------------------- */
 
-    .header-role-admin
-    .header-export-data-btn {
-        order: 7 !important;
-    }
+.header-role-admin
+.header-auth-btn {
+    order: 1 !important;
+}
 
-    .header-role-admin
-    .header-import-data-btn {
-        order: 8 !important;
-    }
+.header-role-admin
+.header-settings-btn {
+    order: 2 !important;
+
+    width:
+        100% !important;
+
+    min-width:
+        0 !important;
+
+    max-width:
+        none !important;
+
+    justify-self:
+        stretch !important;
+}
+
+.header-role-admin
+.header-export-btn {
+    order: 3 !important;
+}
+
+.header-role-admin
+.header-sync-btn {
+    order: 4 !important;
+}
+
+.header-role-admin
+.header-cloud-btn {
+    order: 5 !important;
+}
+
+.header-role-admin
+.header-osai-btn {
+    order: 6 !important;
+}
+
+.header-role-admin
+.header-export-data-btn {
+    order: 7 !important;
+}
+
+.header-role-admin
+.header-import-data-btn {
+    order: 8 !important;
+}
+
+
+/* =========================================================
+   手機直式 Footer
+
+   © OSAI｜法規智慧鑑別系統
+   Developed by Sam Sun
+
+   改為左右並排並整體置中。
+
+   僅調整手機直式，
+   不影響桌機與手機橫式。
+========================================================= */
+
+.mobile-footer-tight > div:first-child {
+    display:
+        flex !important;
+
+    flex-direction:
+        row !important;
+
+    align-items:
+        center !important;
+
+    justify-content:
+        center !important;
+
+    flex-wrap:
+        nowrap !important;
+
+    width:
+        100% !important;
+
+    gap:
+        8px !important;
+}
+
+
+/*
+ * 左側系統名稱稍微縮小，
+ * 避免窄螢幕左右排列時超出畫面。
+ */
+.mobile-footer-tight
+> div:first-child
+> p {
+    flex:
+        0 1 auto;
+
+    margin:
+        0 !important;
+
+    font-size:
+        10px !important;
+
+    letter-spacing:
+        0.06em !important;
+
+    white-space:
+        nowrap;
+}
+
+
+/*
+ * 右側 Developed by Sam Sun 區塊
+ * 縮減手機直式水平 padding，
+ * 桌機原本尺寸完全不變。
+ */
+.mobile-footer-tight
+> div:first-child
+> div {
+    flex:
+        0 0 auto;
+
+    padding:
+        6px 10px !important;
+
+    gap:
+        6px !important;
+}
+
+
+/*
+ * Developed by Sam Sun
+ * 手機直式保持單行。
+ */
+.mobile-footer-tight
+> div:first-child
+> div
+> span {
+    font-size:
+        8px !important;
+
+    letter-spacing:
+        0.12em !important;
+
+    white-space:
+        nowrap;
+}
 
 }
 
@@ -5120,13 +5327,31 @@ setDraftEditorEnabled(
 );
 
 /*
- * 每次重新開啟系統，
- * 自動清除舊版本 IndexedDB
- * 曾經留下的正式資料與權限。
+ * 系統主畫面先完成初始化。
+ *
+ * IndexedDB 現在僅保留作為
+ * 舊版本本機資料清理用途，
+ * 已不是新版正式資料來源，
+ * 因此不再阻塞主畫面載入。
  */
-await dbManager.clearAll();
+setIsLoaded(true);
 
-                        setIsLoaded(true);
+
+/*
+ * 非阻塞清除舊版本 IndexedDB。
+ *
+ * 即使清理失敗，
+ * 也不影響目前 React 工作階段、
+ * 正式 JSON、Cloud Preview
+ * 或 Cloud Workspace。
+ */
+dbManager.clearAll()
+    .catch((err) => {
+        console.warn(
+            '舊版 IndexedDB 清理失敗：',
+            err
+        );
+    });
                     } catch (err) {
                         console.error(
     "系統初始化失敗",
@@ -14427,11 +14652,6 @@ if (
          */
         setCloudWorkspaceItems([]);
 
-        /*
-         * 清除舊版本瀏覽器
-         * 曾經留下的正式資料與權限。
-         */
-        await dbManager.clearAll();
 
 /*
  * 使用者已確認登出，
