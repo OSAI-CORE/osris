@@ -3143,6 +3143,34 @@ and (max-width: 950px) {
 }
 
 /* =========================================================
+   手機直式／橫式：
+   雲端中心所有密碼輸入框
+   圓點大小與間距比照系統權限登入密碼框
+========================================================= */
+
+@media screen and (max-width: 950px) {
+
+    input[type="password"][id^="cloud-"] {
+        font-size: 16px !important;
+        line-height: 1.5rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.42em !important;
+    }
+
+
+    /*
+     * 有 placeholder 的密碼欄位
+     * 不讓提示文字也被拉開字距。
+     */
+    input[type="password"][id^="cloud-"]::placeholder {
+        font-size: 16px !important;
+        line-height: 1.5rem !important;
+        font-weight: 400 !important;
+        letter-spacing: 0 !important;
+    }
+}
+
+/* =========================================================
    OSRIS Header 最終統一版
    比照職業安全證照管理系統
 
@@ -17891,73 +17919,6 @@ justify-center
 </div>
 
 
-{/* 目前已載入的 Workspace */}
-{(
-    activeCloudWorkspaceId &&
-    activeCloudWorkspaceRevision > 0
-) && (
-    <div
-        className="
-            rounded-xl
-            border border-blue-100
-            bg-blue-50/60
-            px-3 py-2.5
-        "
-    >
-        <div
-            className="
-                flex items-center
-                justify-between
-                gap-3
-            "
-        >
-            <div className="min-w-0">
-                <p
-                    className="
-                        text-[10px]
-                        font-bold
-                        text-blue-500
-                    "
-                >
-                    目前雲端工作資料
-                </p>
-
-                <p
-                    className="
-                        mt-0.5
-                        text-xs
-                        font-black
-                        text-slate-700
-                        truncate
-                    "
-                >
-                    {
-                        activeCloudWorkspaceName ||
-                        '雲端工作資料'
-                    }
-                </p>
-            </div>
-
-            <span
-                className="
-                    shrink-0
-                    px-2 py-1
-                    rounded-full
-                    bg-blue-100
-                    text-blue-700
-                    text-[9px]
-                    font-black
-                "
-            >
-                Revision {
-                    activeCloudWorkspaceRevision
-                }
-            </span>
-        </div>
-    </div>
-)}
-
-
 {/* Workspace 清單 */}
 <div
     className="
@@ -18429,11 +18390,11 @@ className="
     className="
         shrink-0
         rounded-full
-        bg-stone-200
+        bg-blue-100
         px-2 py-0.5
         text-[9px]
         font-black
-        text-stone-700
+        text-blue-700
     "
 >
     Revision {
