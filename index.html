@@ -16698,15 +16698,43 @@ const handleBackToMonitor = () => {
     }
 
     setIsWorkbenchEditMode(false);
+
+    /*
+     * 返回監控清單前，
+     * 先強制關閉「回到頂端」浮動按鈕。
+     *
+     * 避免手機橫式切換 fixed 浮動按鈕時，
+     * 舊狀態在 React 重新渲染期間短暫顯示
+     * chevron-up 圖示。
+     */
+    setShowMonitorTopButton(false);
+
     setActiveTab('monitor');
 
     // 等待監控清單重新渲染後，恢復原本捲動位置
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+
+            const restoreTop =
+                Number(
+                    monitorScrollPositionRef.current
+                ) || 0;
+
             window.scrollTo({
-                top: monitorScrollPositionRef.current,
+                top: restoreTop,
                 left: 0,
                 behavior: 'auto'
+            });
+
+            /*
+             * 捲動位置真正恢復後，
+             * 再依照監控清單實際位置決定
+             * 是否顯示「回到頂端」。
+             */
+            requestAnimationFrame(() => {
+                setShowMonitorTopButton(
+                    restoreTop > 560
+                );
             });
         });
     });
@@ -23047,13 +23075,14 @@ setDraftEditorEnabled(
     <div className="fade-in space-y-4 sm:space-y-8">
 
         {/* 監控清單－回到頂端浮動按鈕 */}
-        {showMonitorTopButton && (
-            <button
-                type="button"
-                onClick={handleMonitorScrollToTop}
-                className="monitor-top-btn floating-back-btn back-nav-btn"
-                aria-label="回到頁面頂端"
-            >
+{showMonitorTopButton && (
+    <button
+        key="monitor-top-floating-button"
+        type="button"
+        onClick={handleMonitorScrollToTop}
+        className="monitor-top-btn floating-back-btn back-nav-btn"
+        aria-label="回到頁面頂端"
+    >
                 <span
                     className="floating-back-icon"
                     aria-hidden="true"
@@ -23379,6 +23408,7 @@ data-tooltip={
 
 {/* 鑑別工作台浮動返回按鈕 */}
 <button
+    key="workbench-back-floating-button"
     type="button"
     onClick={handleBackToMonitor}
     className="floating-back-btn back-nav-btn"
