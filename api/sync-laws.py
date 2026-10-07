@@ -7,6 +7,8 @@ import re
 
 import time
 
+import hashlib
+
 import requests
 
 import xml.etree.ElementTree as ET
@@ -20,7 +22,29 @@ from urllib3.util.retry import Retry
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
 LAW_LIST_PATH = os.path.join(BASE_DIR, "law_list.json")
+
+REGULATION_SUPABASE_URL = (
+    os.getenv(
+        "OSRIS_REGULATION_SUPABASE_URL",
+        ""
+    )
+    .strip()
+    .rstrip("/")
+)
+
+REGULATION_SUPABASE_SERVICE_ROLE_KEY = (
+    os.getenv(
+        "OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY",
+        ""
+    )
+    .strip()
+)
+
+REGULATION_BASELINE_TABLE = (
+    "osris_regulation_baselines"
+)
 
 HEADERS = {
     "User-Agent": (
@@ -831,6 +855,209 @@ def get_law_snapshot(pcode):
         "error": None
     }
 
+def build_articles_hash(articles):
+    """
+    對條文內容建立穩定 SHA-256。
+
+    未來除了日期之外，
+    也可以判斷實際條文內容是否改變。
+    """
+
+    normalized = json.dumps(
+        articles,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(
+            ",",
+            ":"
+        )
+    )
+
+    return hashlib.sha256(
+        normalized.encode("utf-8")
+    ).hexdigest()
+
+
+def upsert_regulation_baseline(
+    pcode,
+    law_name,
+    snapshot
+):
+    """
+    將指定法規 Snapshot
+    寫入 osris_regulation_baselines。
+
+    R1-B2-B 階段用途：
+    建立第一份 baseline。
+
+    目前不處理 pending diff。
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    normalized_name = str(
+        law_name or ""
+    ).strip()
+
+    if not normalized_pcode:
+        raise ValueError(
+            "缺少 PCode"
+        )
+
+    if not snapshot.get("success"):
+        raise ValueError(
+            snapshot.get("error") or
+            "Snapshot 無效"
+        )
+
+    articles = snapshot.get(
+        "articles",
+        []
+    )
+
+    if not isinstance(
+        articles,
+        list
+    ) or not articles:
+        raise ValueError(
+            "Snapshot 沒有有效條文"
+        )
+
+    articles_hash = (
+        build_articles_hash(
+            articles
+        )
+    )
+
+    payload = {
+        "pcode":
+            normalized_pcode,
+
+        "law_name":
+            normalized_name,
+
+        "baseline_date":
+            snapshot.get("date"),
+
+        "baseline_articles":
+            articles,
+
+        "baseline_hash":
+            articles_hash,
+
+        "pending_date":
+            None,
+
+        "pending_articles":
+            None,
+
+        "pending_diff":
+            None,
+
+        "pending_hash":
+            None,
+
+        "status":
+            "baseline_ready",
+
+        "source_url":
+            snapshot.get(
+                "sourceUrl"
+            ),
+
+        "last_error":
+            None,
+
+        "last_synced_at":
+            time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ",
+                time.gmtime()
+            ),
+
+        "updated_at":
+            time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ",
+                time.gmtime()
+            )
+    }
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+        f"?on_conflict=pcode"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Authorization":
+            (
+                "Bearer "
+                + REGULATION_SUPABASE_SERVICE_ROLE_KEY
+            ),
+
+        "Content-Type":
+            "application/json",
+
+        "Prefer":
+            "resolution=merge-duplicates,"
+            "return=representation"
+    }
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=payload,
+        timeout=(8, 25)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase baseline 寫入失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        result = response.json()
+
+    except ValueError:
+        result = []
+
+    return {
+        "success":
+            True,
+
+        "pcode":
+            normalized_pcode,
+
+        "baselineDate":
+            snapshot.get("date"),
+
+        "articleCount":
+            len(articles),
+
+        "baselineHash":
+            articles_hash,
+
+        "data":
+            result
+    }
+
 def fetch_one_law(law):
     pcode = str(
         law.get("pcode", "")
@@ -991,6 +1218,82 @@ class handler(BaseHTTPRequestHandler):
                 )
 
                 return
+
+            if mode == "baseline":
+
+                pcode = str(
+                    query.get(
+                        "pcode",
+                        [""]
+                    )[0]
+                ).strip().upper()
+
+                law_name = str(
+                    query.get(
+                        "name",
+                        [""]
+                    )[0]
+                ).strip()
+
+                if not pcode:
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "缺少 pcode"
+                        }
+                    )
+
+                    return
+
+                snapshot = (
+                    get_law_snapshot(
+                        pcode
+                    )
+                )
+
+                if not snapshot["success"]:
+                    self.send_json(
+                        502,
+                        snapshot
+                    )
+
+                    return
+
+                try:
+                    save_result = (
+                        upsert_regulation_baseline(
+                            pcode,
+                            law_name,
+                            snapshot
+                        )
+                    )
+
+                    self.send_json(
+                        200,
+                        save_result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "pcode":
+                                pcode,
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
+
             if not os.path.exists(LAW_LIST_PATH):
                 raise FileNotFoundError(
                     f"找不到法規清單檔案：{LAW_LIST_PATH}"
