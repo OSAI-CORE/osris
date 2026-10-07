@@ -1004,12 +1004,6 @@ def upsert_regulation_baseline(
         "apikey":
             REGULATION_SUPABASE_SERVICE_ROLE_KEY,
 
-        "Authorization":
-            (
-                "Bearer "
-                + REGULATION_SUPABASE_SERVICE_ROLE_KEY
-            ),
-
         "Content-Type":
             "application/json",
 
