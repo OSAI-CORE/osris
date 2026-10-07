@@ -415,6 +415,159 @@ def get_law_date(pcode):
     finally:
         session.close()
 
+def extract_law_date_from_html(html):
+    """
+    從已取得的全國法規資料庫 HTML
+    解析修正／公布／發布日期。
+
+    不進行任何 HTTP Request。
+    """
+
+    if not html:
+        return {
+            "date": None,
+            "rawDate": None,
+            "error": "法規 HTML 為空白"
+        }
+
+    date_patterns = [
+        (
+            r"修正日期\s*[：:]?\s*"
+            r"(?:中華民國\s*)?"
+            r"(?:民國\s*)?"
+            r"(\d{2,4})\s*年\s*"
+            r"(\d{1,2})\s*月\s*"
+            r"(\d{1,2})\s*日"
+        ),
+        (
+            r"公布日期\s*[：:]?\s*"
+            r"(?:中華民國\s*)?"
+            r"(?:民國\s*)?"
+            r"(\d{2,4})\s*年\s*"
+            r"(\d{1,2})\s*月\s*"
+            r"(\d{1,2})\s*日"
+        ),
+        (
+            r"發布日期\s*[：:]?\s*"
+            r"(?:中華民國\s*)?"
+            r"(?:民國\s*)?"
+            r"(\d{2,4})\s*年\s*"
+            r"(\d{1,2})\s*月\s*"
+            r"(\d{1,2})\s*日"
+        )
+    ]
+
+    date_match = None
+
+    for pattern in date_patterns:
+        date_match = re.search(
+            pattern,
+            html,
+            flags=re.IGNORECASE
+        )
+
+        if date_match:
+            break
+
+    if not date_match:
+        compact_html = re.sub(
+            r"<[^>]+>",
+            " ",
+            html
+        )
+
+        compact_html = re.sub(
+            r"\s+",
+            " ",
+            compact_html
+        )
+
+        for pattern in date_patterns:
+            date_match = re.search(
+                pattern,
+                compact_html,
+                flags=re.IGNORECASE
+            )
+
+            if date_match:
+                break
+
+    if not date_match:
+        return {
+            "date": None,
+            "rawDate": None,
+            "error":
+                "法規頁面中找不到修正、公布或發布日期"
+        }
+
+    try:
+        raw_year = int(
+            date_match.group(1)
+        )
+
+        month = int(
+            date_match.group(2)
+        )
+
+        day = int(
+            date_match.group(3)
+        )
+
+        if raw_year < 1911:
+            year = raw_year + 1911
+
+            raw_date = (
+                f"民國{raw_year}年"
+                f"{month:02d}月"
+                f"{day:02d}日"
+            )
+
+        else:
+            year = raw_year
+
+            raw_date = (
+                f"{year}年"
+                f"{month:02d}月"
+                f"{day:02d}日"
+            )
+
+        if year < 1912 or year > 2200:
+            raise ValueError(
+                f"年份超出合理範圍：{year}"
+            )
+
+        if month < 1 or month > 12:
+            raise ValueError(
+                f"月份格式錯誤：{month}"
+            )
+
+        if day < 1 or day > 31:
+            raise ValueError(
+                f"日期格式錯誤：{day}"
+            )
+
+        return {
+            "date":
+                (
+                    f"{year:04d}-"
+                    f"{month:02d}-"
+                    f"{day:02d}"
+                ),
+
+            "rawDate":
+                raw_date,
+
+            "error":
+                None
+        }
+
+    except Exception as exc:
+        return {
+            "date": None,
+            "rawDate": None,
+            "error": str(exc)
+        }
+
 class LawArticleHTMLParser(HTMLParser):
     """
     從全國法規資料庫「所有條文」頁面，
@@ -787,19 +940,132 @@ def get_law_snapshot(pcode):
     """
     建立單一法規目前正式 Snapshot。
 
-    目前只讀取官方資料，
-    尚不寫入 Supabase。
+    同一個 LawAll.aspx Request
+    同時解析：
+    1. 最新修正／公布日期
+    2. 完整正式條文
+
+    避免同一部法規重複向官方網站請求兩次。
     """
 
     normalized_pcode = str(
         pcode or ""
     ).strip().upper()
 
-    date_result = get_law_date(
-        normalized_pcode
+    if not normalized_pcode:
+        return {
+            "success": False,
+            "pcode": "",
+            "date": None,
+            "articles": [],
+            "articleCount": 0,
+            "sourceUrl": None,
+            "error": "缺少 PCode"
+        }
+
+    url = (
+        "https://law.moj.gov.tw/"
+        "LawClass/LawAll.aspx"
     )
 
-    if not date_result["date"]:
+    source_url = (
+        f"{url}?pcode="
+        f"{normalized_pcode}"
+    )
+
+    session = create_session()
+
+    try:
+        response = session.get(
+            url,
+            params={
+                "pcode":
+                    normalized_pcode
+            },
+            headers=HEADERS,
+            timeout=(8, 25),
+            allow_redirects=True
+        )
+
+        response.raise_for_status()
+
+        if not response.content:
+            raise ValueError(
+                "全國法規資料庫回傳空白內容"
+            )
+
+        response.encoding = (
+            response.apparent_encoding or
+            response.encoding or
+            "utf-8"
+        )
+
+        html = response.text
+
+        if not html.strip():
+            raise ValueError(
+                "全國法規資料庫回傳空白網頁"
+            )
+
+        if "全國法規資料庫" not in html:
+            raise ValueError(
+                "回傳內容不是全國法規資料庫頁面"
+            )
+
+        # 同一份 HTML 解析日期
+        date_result = (
+            extract_law_date_from_html(
+                html
+            )
+        )
+
+        if not date_result["date"]:
+            return {
+                "success": False,
+                "pcode":
+                    normalized_pcode,
+                "date": None,
+                "articles": [],
+                "articleCount": 0,
+                "sourceUrl":
+                    source_url,
+                "error":
+                    date_result["error"]
+            }
+
+        # 同一份 HTML 解析完整條文
+        parser = LawArticleHTMLParser()
+
+        parser.feed(
+            html
+        )
+
+        parser.close()
+
+        articles = parser.articles
+
+        if not articles:
+            raise ValueError(
+                "法規頁面中找不到正式條文"
+            )
+
+        return {
+            "success": True,
+            "pcode":
+                normalized_pcode,
+            "date":
+                date_result["date"],
+            "articles":
+                articles,
+            "articleCount":
+                len(articles),
+            "sourceUrl":
+                source_url,
+            "error":
+                None
+        }
+
+    except requests.Timeout:
         return {
             "success": False,
             "pcode":
@@ -807,53 +1073,45 @@ def get_law_snapshot(pcode):
             "date": None,
             "articles": [],
             "articleCount": 0,
-            "sourceUrl": None,
+            "sourceUrl":
+                source_url,
             "error":
-                date_result["error"] or
-                "無法取得法規日期"
+                "取得法規 Snapshot 連線逾時"
         }
 
-    article_result = get_law_articles(
-        normalized_pcode
-    )
-
-    if article_result["error"]:
+    except requests.RequestException as exc:
         return {
             "success": False,
             "pcode":
                 normalized_pcode,
-            "date":
-                date_result["date"],
+            "date": None,
             "articles": [],
             "articleCount": 0,
             "sourceUrl":
-                article_result[
-                    "sourceUrl"
-                ],
+                source_url,
             "error":
-                article_result["error"]
+                (
+                    "取得法規 Snapshot HTTP 請求失敗："
+                    f"{str(exc)}"
+                )
         }
 
-    articles = (
-        article_result["articles"]
-    )
+    except Exception as exc:
+        return {
+            "success": False,
+            "pcode":
+                normalized_pcode,
+            "date": None,
+            "articles": [],
+            "articleCount": 0,
+            "sourceUrl":
+                source_url,
+            "error":
+                str(exc)
+        }
 
-    return {
-        "success": True,
-        "pcode":
-            normalized_pcode,
-        "date":
-            date_result["date"],
-        "articles":
-            articles,
-        "articleCount":
-            len(articles),
-        "sourceUrl":
-            article_result[
-                "sourceUrl"
-            ],
-        "error": None
-    }
+    finally:
+        session.close()
 
 def build_articles_hash(articles):
     """
