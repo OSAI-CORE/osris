@@ -1,10 +1,19 @@
 from http.server import BaseHTTPRequestHandler
 import json
+
 import os
+
 import re
+
 import time
+
 import requests
+
 import xml.etree.ElementTree as ET
+
+from html.parser import HTMLParser
+
+from urllib.parse import urlparse, parse_qs
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -382,6 +391,445 @@ def get_law_date(pcode):
     finally:
         session.close()
 
+class LawArticleHTMLParser(HTMLParser):
+    """
+    從全國法規資料庫「所有條文」頁面，
+    擷取每一條正式條文。
+
+    不依賴 BeautifulSoup，
+    避免增加目前 Vercel Python 後端的套件依賴。
+    """
+
+    def __init__(self):
+        super().__init__(
+            convert_charrefs=True
+        )
+
+        self.articles = []
+
+        self.current_article_no = None
+        self.current_parts = []
+
+        self.in_article_link = False
+        self.article_link_parts = []
+
+        self.skip_depth = 0
+        self.stopped = False
+
+
+    def handle_starttag(
+        self,
+        tag,
+        attrs
+    ):
+        if self.stopped:
+            return
+
+        tag = str(tag).lower()
+
+        if tag in {
+            "script",
+            "style",
+            "noscript"
+        }:
+            self.skip_depth += 1
+            return
+
+        if self.skip_depth > 0:
+            return
+
+        attrs_dict = dict(attrs)
+
+        if tag == "a":
+            href = str(
+                attrs_dict.get(
+                    "href",
+                    ""
+                )
+            )
+
+            # 全國法規資料庫每一條條號
+            # 會連向 LawSingle.aspx?flno=...
+            #
+            # 只把這種連結辨識為真正條文標題，
+            # 避免內文中的「第五條」等文字
+            # 被誤判成新的條文。
+            if (
+                "LawSingle.aspx" in href and
+                "flno=" in href.lower()
+            ):
+                self.in_article_link = True
+                self.article_link_parts = []
+
+        if (
+            self.current_article_no and
+            tag in {
+                "br",
+                "p",
+                "li",
+                "div"
+            }
+        ):
+            self.current_parts.append(
+                "\n"
+            )
+
+
+    def handle_endtag(
+        self,
+        tag
+    ):
+        tag = str(tag).lower()
+
+        if tag in {
+            "script",
+            "style",
+            "noscript"
+        }:
+            if self.skip_depth > 0:
+                self.skip_depth -= 1
+
+            return
+
+        if (
+            self.skip_depth > 0 or
+            self.stopped
+        ):
+            return
+
+        if (
+            tag == "a" and
+            self.in_article_link
+        ):
+            article_label = (
+                "".join(
+                    self.article_link_parts
+                )
+                .strip()
+            )
+
+            match = re.search(
+                r"第\s*(\d+(?:-\d+)?)\s*條",
+                article_label
+            )
+
+            if match:
+                self._finish_current_article()
+
+                self.current_article_no = (
+                    f"第 {match.group(1)} 條"
+                )
+
+                self.current_parts = []
+
+            self.in_article_link = False
+            self.article_link_parts = []
+
+        if (
+            self.current_article_no and
+            tag in {
+                "p",
+                "li",
+                "div"
+            }
+        ):
+            self.current_parts.append(
+                "\n"
+            )
+
+
+    def handle_data(
+        self,
+        data
+    ):
+        if (
+            self.skip_depth > 0 or
+            self.stopped
+        ):
+            return
+
+        value = str(
+            data or ""
+        )
+
+        stripped = value.strip()
+
+        if self.in_article_link:
+            self.article_link_parts.append(
+                value
+            )
+
+            return
+
+        if not self.current_article_no:
+            return
+
+        # 已經進入條文區後，
+        # 遇到頁尾導覽即停止收集，
+        # 避免最後一條吃到網站 Footer。
+        if stripped in {
+            "最新訊息",
+            "訂閱電子報"
+        }:
+            self._finish_current_article()
+            self.stopped = True
+            return
+
+        # 編、章、節標題不屬於前一條正文。
+        if re.fullmatch(
+            r"第\s*[一二三四五六七八九十百千0-9]+\s*[編章節]",
+            stripped
+        ):
+            return
+
+        if stripped:
+            self.current_parts.append(
+                value
+            )
+
+
+    def close(self):
+        super().close()
+
+        if not self.stopped:
+            self._finish_current_article()
+
+
+    def _finish_current_article(self):
+        if not self.current_article_no:
+            return
+
+        raw_text = "".join(
+            self.current_parts
+        )
+
+        lines = []
+
+        for line in raw_text.splitlines():
+            normalized_line = re.sub(
+                r"[ \t\u3000]+",
+                " ",
+                line
+            ).strip()
+
+            if normalized_line:
+                lines.append(
+                    normalized_line
+                )
+
+        article_text = "\n".join(
+            lines
+        ).strip()
+
+        if article_text:
+            self.articles.append({
+                "no":
+                    self.current_article_no,
+
+                "text":
+                    article_text
+            })
+
+        self.current_article_no = None
+        self.current_parts = []
+
+
+def get_law_articles(pcode):
+    """
+    從全國法規資料庫取得指定 PCode
+    目前最新版的完整正式條文。
+    """
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    if not normalized_pcode:
+        return {
+            "articles": [],
+            "sourceUrl": None,
+            "error": "缺少 PCode"
+        }
+
+    url = (
+        "https://law.moj.gov.tw/"
+        "LawClass/LawAll.aspx"
+    )
+
+    source_url = (
+        f"{url}?pcode="
+        f"{normalized_pcode}"
+    )
+
+    session = create_session()
+
+    try:
+        response = session.get(
+            url,
+            params={
+                "pcode":
+                    normalized_pcode
+            },
+            headers=HEADERS,
+            timeout=(8, 25),
+            allow_redirects=True
+        )
+
+        response.raise_for_status()
+
+        if not response.content:
+            raise ValueError(
+                "全國法規資料庫回傳空白內容"
+            )
+
+        response.encoding = (
+            response.apparent_encoding or
+            response.encoding or
+            "utf-8"
+        )
+
+        html = response.text
+
+        if not html.strip():
+            raise ValueError(
+                "全國法規資料庫回傳空白網頁"
+            )
+
+        if "全國法規資料庫" not in html:
+            raise ValueError(
+                "回傳內容不是全國法規資料庫頁面"
+            )
+
+        parser = LawArticleHTMLParser()
+
+        parser.feed(
+            html
+        )
+
+        parser.close()
+
+        articles = (
+            parser.articles
+        )
+
+        if not articles:
+            raise ValueError(
+                "法規頁面中找不到正式條文"
+            )
+
+        return {
+            "articles":
+                articles,
+
+            "sourceUrl":
+                source_url,
+
+            "error":
+                None
+        }
+
+    except requests.Timeout:
+        return {
+            "articles": [],
+            "sourceUrl":
+                source_url,
+            "error":
+                "取得完整條文連線逾時"
+        }
+
+    except requests.RequestException as exc:
+        return {
+            "articles": [],
+            "sourceUrl":
+                source_url,
+            "error":
+                f"取得完整條文 HTTP 請求失敗：{str(exc)}"
+        }
+
+    except Exception as exc:
+        return {
+            "articles": [],
+            "sourceUrl":
+                source_url,
+            "error":
+                str(exc)
+        }
+
+    finally:
+        session.close()
+
+
+def get_law_snapshot(pcode):
+    """
+    建立單一法規目前正式 Snapshot。
+
+    目前只讀取官方資料，
+    尚不寫入 Supabase。
+    """
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    date_result = get_law_date(
+        normalized_pcode
+    )
+
+    if not date_result["date"]:
+        return {
+            "success": False,
+            "pcode":
+                normalized_pcode,
+            "date": None,
+            "articles": [],
+            "articleCount": 0,
+            "sourceUrl": None,
+            "error":
+                date_result["error"] or
+                "無法取得法規日期"
+        }
+
+    article_result = get_law_articles(
+        normalized_pcode
+    )
+
+    if article_result["error"]:
+        return {
+            "success": False,
+            "pcode":
+                normalized_pcode,
+            "date":
+                date_result["date"],
+            "articles": [],
+            "articleCount": 0,
+            "sourceUrl":
+                article_result[
+                    "sourceUrl"
+                ],
+            "error":
+                article_result["error"]
+        }
+
+    articles = (
+        article_result["articles"]
+    )
+
+    return {
+        "success": True,
+        "pcode":
+            normalized_pcode,
+        "date":
+            date_result["date"],
+        "articles":
+            articles,
+        "articleCount":
+            len(articles),
+        "sourceUrl":
+            article_result[
+                "sourceUrl"
+            ],
+        "error": None
+    }
 
 def fetch_one_law(law):
     pcode = str(
@@ -483,9 +931,66 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+
         started_at = time.time()
 
         try:
+            parsed_url = urlparse(
+                self.path
+            )
+
+            query = parse_qs(
+                parsed_url.query
+            )
+
+            mode = str(
+                query.get(
+                    "mode",
+                    [""]
+                )[0]
+            ).strip().lower()
+
+            # R1-B1：
+            # 單一 PCode 完整條文 Snapshot 測試。
+            #
+            # 不影響目前既有智能同步。
+            if mode == "snapshot":
+
+                pcode = str(
+                    query.get(
+                        "pcode",
+                        [""]
+                    )[0]
+                ).strip().upper()
+
+                if not pcode:
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "缺少 pcode"
+                        }
+                    )
+
+                    return
+
+                snapshot = (
+                    get_law_snapshot(
+                        pcode
+                    )
+                )
+
+                self.send_json(
+                    200
+                    if snapshot["success"]
+                    else 502,
+                    snapshot
+                )
+
+                return
             if not os.path.exists(LAW_LIST_PATH):
                 raise FileNotFoundError(
                     f"找不到法規清單檔案：{LAW_LIST_PATH}"
