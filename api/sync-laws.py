@@ -1940,6 +1940,328 @@ def analyze_regulation_update(pcode):
             None
     }    
 
+def normalize_regulation_date(value):
+    """
+    將日期統一驗證為 YYYY-MM-DD。
+    """
+
+    normalized_date = str(
+        value or ""
+    ).strip()
+
+    if not normalized_date:
+        return None
+
+    try:
+        time.strptime(
+            normalized_date,
+            "%Y-%m-%d"
+        )
+
+    except ValueError:
+        return None
+
+    return normalized_date
+
+def get_regulation_state_list():
+    """
+    取得全部法規目前中央狀態。
+
+    CurrentDate：
+    有 pending_review 時使用 pending_date，
+    否則使用正式 baseline_date。
+
+    LastReviewedDate：
+    最近一次完成鑑別／同步鑑別日期。
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Accept":
+            "application/json"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={
+            "select":
+                (
+                    "pcode,"
+                    "law_name,"
+                    "baseline_date,"
+                    "pending_date,"
+                    "last_reviewed_date,"
+                    "status"
+                ),
+
+            "order":
+                "pcode.asc"
+        },
+        timeout=(8, 20)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase 中央法規狀態查詢失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if not isinstance(
+        rows,
+        list
+    ):
+        rows = []
+
+    result = []
+
+    for row in rows:
+
+        status = str(
+            row.get(
+                "status"
+            ) or ""
+        ).strip()
+
+        baseline_date = (
+            row.get(
+                "baseline_date"
+            )
+        )
+
+        pending_date = (
+            row.get(
+                "pending_date"
+            )
+        )
+
+        has_pending = (
+            status == "pending_review" and
+            bool(
+                pending_date
+            )
+        )
+
+        current_date = (
+            pending_date
+            if has_pending
+            else baseline_date
+        )
+
+        result.append({
+            "Pcode":
+                row.get(
+                    "pcode"
+                ),
+
+            "Name":
+                row.get(
+                    "law_name"
+                ),
+
+            "CurrentDate":
+                current_date,
+
+            "BaselineDate":
+                baseline_date,
+
+            "PendingDate":
+                pending_date,
+
+            "LastReviewedDate":
+                row.get(
+                    "last_reviewed_date"
+                ),
+
+            "Status":
+                status,
+
+            "HasPending":
+                has_pending
+        })
+
+    return {
+        "success":
+            True,
+
+        "count":
+            len(
+                result
+            ),
+
+        "data":
+            result,
+
+        "error":
+            None
+    }
+
+def update_regulation_review_date(
+    pcode,
+    review_date
+):
+    """
+    更新單一法規的中央最近鑑別日期。
+
+    不修改：
+    baseline
+    pending
+    法規條文
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    normalized_date = (
+        normalize_regulation_date(
+            review_date
+        )
+    )
+
+    if not normalized_pcode:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                "",
+
+            "error":
+                "缺少 PCode"
+        }
+
+    if not normalized_date:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "error":
+                "鑑別日期格式錯誤"
+        }
+
+    now_iso = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+        time.gmtime()
+    )
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Content-Type":
+            "application/json",
+
+        "Prefer":
+            "return=representation"
+    }
+
+    response = requests.patch(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}"
+        },
+        json={
+            "last_reviewed_date":
+                normalized_date,
+
+            "updated_at":
+                now_iso
+        },
+        timeout=(8, 25)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase 鑑別日期更新失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        not isinstance(
+            rows,
+            list
+        ) or
+        len(rows) == 0
+    ):
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "error":
+                "找不到此法規的中央 Baseline"
+        }
+
+    return {
+        "success":
+            True,
+
+        "pcode":
+            normalized_pcode,
+
+        "lastReviewedDate":
+            normalized_date,
+
+        "error":
+            None
+    }
+
 def get_regulation_pending_list():
     """
     取得目前所有等待人工鑑別的法規。
@@ -3382,6 +3704,42 @@ class handler(BaseHTTPRequestHandler):
                     )[0]
                 ).strip().upper()
 
+                review_date_raw = str(
+                    query.get(
+                        "review_date",
+                        [""]
+                    )[0]
+                ).strip()
+
+                review_date = None
+
+                if review_date_raw:
+                    review_date = (
+                        normalize_regulation_date(
+                            review_date_raw
+                        )
+                    )
+
+                    if not review_date:
+                        self.send_json(
+                            400,
+                            {
+                                "success":
+                                    False,
+
+                                "pcode":
+                                    pcode,
+
+                                "error":
+                                    (
+                                        "review_date "
+                                        "必須為 YYYY-MM-DD"
+                                    )
+                            }
+                        )
+
+                        return
+
                 if not pcode:
                     self.send_json(
                         400,
@@ -3402,6 +3760,56 @@ class handler(BaseHTTPRequestHandler):
                             pcode
                         )
                     )
+
+                    # 若前端有傳入 review_date，
+                    # 在 Baseline 處理成功後，
+                    # 同步保存中央最近鑑別日期。
+                    if (
+                        result.get(
+                            "success"
+                        ) and
+                        review_date
+                    ):
+                        review_result = (
+                            update_regulation_review_date(
+                                pcode,
+                                review_date
+                            )
+                        )
+
+                        if not review_result.get(
+                            "success"
+                        ):
+                            result = {
+                                "success":
+                                    False,
+
+                                "pcode":
+                                    pcode,
+
+                                "promoted":
+                                    result.get(
+                                        "promoted",
+                                        False
+                                    ),
+
+                                "status":
+                                    "review_date_failed",
+
+                                "error":
+                                    review_result.get(
+                                        "error"
+                                    )
+                            }
+
+                        else:
+                            result[
+                                "lastReviewedDate"
+                            ] = (
+                                review_result.get(
+                                    "lastReviewedDate"
+                                )
+                            )
 
                     status_code = 200
 
@@ -3435,6 +3843,38 @@ class handler(BaseHTTPRequestHandler):
 
                             "promoted":
                                 False,
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
+
+            if mode == "state-list":
+
+                try:
+                    result = (
+                        get_regulation_state_list()
+                    )
+
+                    self.send_json(
+                        200,
+                        result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "count":
+                                0,
+
+                            "data":
+                                [],
 
                             "error":
                                 str(exc)
