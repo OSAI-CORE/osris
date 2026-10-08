@@ -1940,6 +1940,358 @@ def analyze_regulation_update(pcode):
             None
     }    
 
+def get_regulation_pending_list():
+    """
+    取得目前所有等待人工鑑別的法規。
+
+    僅從 Supabase 讀取，
+    不重新連線全國法規資料庫。
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Accept":
+            "application/json"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={
+            "status":
+                "eq.pending_review",
+
+            "select":
+                (
+                    "pcode,"
+                    "law_name,"
+                    "baseline_date,"
+                    "pending_date,"
+                    "pending_diff,"
+                    "pending_hash,"
+                    "status"
+                ),
+
+            "order":
+                (
+                    "pending_date.desc.nullslast,"
+                    "pcode.asc"
+                )
+        },
+        timeout=(8, 20)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase Pending 清單查詢失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if not isinstance(
+        rows,
+        list
+    ):
+        rows = []
+
+    result = []
+
+    for row in rows:
+
+        pending_diff = (
+            row.get(
+                "pending_diff"
+            )
+        )
+
+        if not isinstance(
+            pending_diff,
+            list
+        ):
+            pending_diff = []
+
+        result.append({
+            "Pcode":
+                row.get(
+                    "pcode"
+                ),
+
+            "Name":
+                row.get(
+                    "law_name"
+                ),
+
+            "BaselineDate":
+                row.get(
+                    "baseline_date"
+                ),
+
+            "PendingDate":
+                row.get(
+                    "pending_date"
+                ),
+
+            "PendingHash":
+                row.get(
+                    "pending_hash"
+                ),
+
+            "ChangedCount":
+                len(
+                    pending_diff
+                ),
+
+            "Status":
+                row.get(
+                    "status"
+                )
+        })
+
+    return {
+        "success":
+            True,
+
+        "count":
+            len(
+                result
+            ),
+
+        "data":
+            result,
+
+        "error":
+            None
+    }
+
+def get_regulation_pending_detail(pcode):
+    """
+    取得指定法規目前 Pending 詳細資料。
+
+    提供給前端鑑別工作台：
+    舊條文
+    新條文
+    異動類型
+    異動說明
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    if not normalized_pcode:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                "",
+
+            "hasPending":
+                False,
+
+            "status":
+                "invalid_pcode",
+
+            "error":
+                "缺少 PCode"
+        }
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Accept":
+            "application/json"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}",
+
+            "select":
+                (
+                    "pcode,"
+                    "law_name,"
+                    "baseline_date,"
+                    "pending_date,"
+                    "pending_diff,"
+                    "pending_hash,"
+                    "status,"
+                    "source_url"
+                ),
+
+            "limit":
+                "1"
+        },
+        timeout=(8, 20)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase Pending 詳情查詢失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        not isinstance(
+            rows,
+            list
+        ) or
+        len(rows) == 0
+    ):
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "hasPending":
+                False,
+
+            "status":
+                "baseline_missing",
+
+            "error":
+                "找不到此法規的 Baseline"
+        }
+
+    row = rows[0]
+
+    pending_diff = (
+        row.get(
+            "pending_diff"
+        )
+    )
+
+    if not isinstance(
+        pending_diff,
+        list
+    ):
+        pending_diff = []
+
+    has_pending = (
+        str(
+            row.get(
+                "status"
+            ) or ""
+        ) == "pending_review"
+        and
+        bool(
+            row.get(
+                "pending_date"
+            )
+        )
+        and
+        bool(
+            row.get(
+                "pending_hash"
+            )
+        )
+    )
+
+    return {
+        "success":
+            True,
+
+        "pcode":
+            normalized_pcode,
+
+        "lawName":
+            row.get(
+                "law_name"
+            ),
+
+        "hasPending":
+            has_pending,
+
+        "status":
+            row.get(
+                "status"
+            ),
+
+        "baselineDate":
+            row.get(
+                "baseline_date"
+            ),
+
+        "pendingDate":
+            row.get(
+                "pending_date"
+            ),
+
+        "pendingHash":
+            row.get(
+                "pending_hash"
+            ),
+
+        "changedCount":
+            len(
+                pending_diff
+            ),
+
+        "diff":
+            pending_diff,
+
+        "sourceUrl":
+            row.get(
+                "source_url"
+            ),
+
+        "error":
+            None
+    }    
+
 def get_regulation_pending_for_approval(pcode):
     """
     取得指定法規目前等待人工確認的 Pending 資料。
@@ -3082,6 +3434,104 @@ class handler(BaseHTTPRequestHandler):
                                 pcode,
 
                             "promoted":
+                                False,
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
+
+            if mode == "pending-list":
+
+                try:
+                    result = (
+                        get_regulation_pending_list()
+                    )
+
+                    self.send_json(
+                        200,
+                        result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "count":
+                                0,
+
+                            "data":
+                                [],
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
+
+            if mode == "pending":
+
+                pcode = str(
+                    query.get(
+                        "pcode",
+                        [""]
+                    )[0]
+                ).strip().upper()
+
+                if not pcode:
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "hasPending":
+                                False,
+
+                            "error":
+                                "缺少 pcode"
+                        }
+                    )
+
+                    return
+
+                try:
+                    result = (
+                        get_regulation_pending_detail(
+                            pcode
+                        )
+                    )
+
+                    status_code = (
+                        200
+                        if result.get(
+                            "success"
+                        )
+                        else 404
+                    )
+
+                    self.send_json(
+                        status_code,
+                        result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "pcode":
+                                pcode,
+
+                            "hasPending":
                                 False,
 
                             "error":
