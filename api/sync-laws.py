@@ -1940,6 +1940,400 @@ def analyze_regulation_update(pcode):
             None
     }    
 
+def get_regulation_pending_for_approval(pcode):
+    """
+    取得指定法規目前等待人工確認的 Pending 資料。
+
+    僅供「完成鑑別 → 升格 Baseline」使用。
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    if not normalized_pcode:
+        return None
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Accept":
+            "application/json"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}",
+
+            "select":
+                (
+                    "pcode,"
+                    "law_name,"
+                    "baseline_date,"
+                    "pending_date,"
+                    "pending_articles,"
+                    "pending_diff,"
+                    "pending_hash,"
+                    "status"
+                ),
+
+            "limit":
+                "1"
+        },
+        timeout=(8, 20)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase pending 查詢失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        isinstance(rows, list) and
+        len(rows) > 0
+    ):
+        return rows[0]
+
+    return None
+
+def promote_regulation_pending_to_baseline(
+    pcode
+):
+    """
+    將人工確認完成的 Pending
+    正式升格為下一版 Baseline。
+
+    安全原則：
+    1. 沒有 pending_review 時不做任何修改。
+    2. 升格前重新驗證 pending_hash。
+    3. 使用 pending_hash + status 作為條件，
+       避免確認期間資料被新版同步取代。
+    """
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    if not normalized_pcode:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                "",
+
+            "promoted":
+                False,
+
+            "status":
+                "invalid_pcode",
+
+            "error":
+                "缺少 PCode"
+        }
+
+    pending = (
+        get_regulation_pending_for_approval(
+            normalized_pcode
+        )
+    )
+
+    if not pending:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "promoted":
+                False,
+
+            "status":
+                "baseline_missing",
+
+            "error":
+                "找不到此法規的 Baseline"
+        }
+
+    pending_date = (
+        pending.get(
+            "pending_date"
+        )
+    )
+
+    pending_articles = (
+        pending.get(
+            "pending_articles"
+        )
+    )
+
+    pending_hash = str(
+        pending.get(
+            "pending_hash"
+        ) or ""
+    ).strip()
+
+    current_status = str(
+        pending.get(
+            "status"
+        ) or ""
+    ).strip()
+
+    # 沒有 Pending 時採冪等處理：
+    # 重複按完成鑑別也不會破壞 Baseline。
+
+    if (
+        current_status != "pending_review" or
+        not pending_date or
+        not isinstance(
+            pending_articles,
+            list
+        ) or
+        not pending_articles or
+        not pending_hash
+    ):
+        return {
+            "success":
+                True,
+
+            "pcode":
+                normalized_pcode,
+
+            "lawName":
+                pending.get(
+                    "law_name"
+                ),
+
+            "promoted":
+                False,
+
+            "status":
+                "no_pending",
+
+            "baselineDate":
+                pending.get(
+                    "baseline_date"
+                ),
+
+            "error":
+                None
+        }
+
+    calculated_hash = (
+        build_articles_hash(
+            pending_articles
+        )
+    )
+
+    if calculated_hash != pending_hash:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "lawName":
+                pending.get(
+                    "law_name"
+                ),
+
+            "promoted":
+                False,
+
+            "status":
+                "pending_integrity_error",
+
+            "error":
+                (
+                    "Pending 條文內容與 "
+                    "pending_hash 不一致，"
+                    "已停止升格"
+                )
+        }
+
+    now_iso = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+        time.gmtime()
+    )
+
+    payload = {
+        "baseline_date":
+            pending_date,
+
+        "baseline_articles":
+            pending_articles,
+
+        "baseline_hash":
+            pending_hash,
+
+        "pending_date":
+            None,
+
+        "pending_articles":
+            None,
+
+        "pending_diff":
+            None,
+
+        "pending_hash":
+            None,
+
+        "status":
+            "baseline_ready",
+
+        "last_error":
+            None,
+
+        "updated_at":
+            now_iso
+    }
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Content-Type":
+            "application/json",
+
+        "Prefer":
+            "return=representation"
+    }
+
+    response = requests.patch(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}",
+
+            "status":
+                "eq.pending_review",
+
+            "pending_hash":
+                f"eq.{pending_hash}"
+        },
+        json=payload,
+        timeout=(8, 25)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase Baseline 升格失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        not isinstance(
+            rows,
+            list
+        ) or
+        len(rows) == 0
+    ):
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "lawName":
+                pending.get(
+                    "law_name"
+                ),
+
+            "promoted":
+                False,
+
+            "status":
+                "pending_changed",
+
+            "error":
+                (
+                    "Pending 資料在確認期間已變更，"
+                    "請重新載入後再完成鑑別"
+                )
+        }
+
+    return {
+        "success":
+            True,
+
+        "pcode":
+            normalized_pcode,
+
+        "lawName":
+            pending.get(
+                "law_name"
+            ),
+
+        "promoted":
+            True,
+
+        "status":
+            "baseline_ready",
+
+        "previousBaselineDate":
+            pending.get(
+                "baseline_date"
+            ),
+
+        "baselineDate":
+            pending_date,
+
+        "approvedChangedCount":
+            len(
+                pending.get(
+                    "pending_diff"
+                ) or []
+            ),
+
+        "error":
+            None
+    }    
+
 def get_existing_regulation_baseline(pcode):
     """
     檢查指定 PCode 是否已經存在 Baseline。
@@ -2627,6 +3021,75 @@ class handler(BaseHTTPRequestHandler):
 
                 return
 
+            if mode == "approve":
+
+                pcode = str(
+                    query.get(
+                        "pcode",
+                        [""]
+                    )[0]
+                ).strip().upper()
+
+                if not pcode:
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "缺少 pcode"
+                        }
+                    )
+
+                    return
+
+                try:
+                    result = (
+                        promote_regulation_pending_to_baseline(
+                            pcode
+                        )
+                    )
+
+                    status_code = 200
+
+                    if not result.get(
+                        "success"
+                    ):
+                        if (
+                            result.get(
+                                "status"
+                            ) == "pending_changed"
+                        ):
+                            status_code = 409
+
+                        else:
+                            status_code = 500
+
+                    self.send_json(
+                        status_code,
+                        result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "pcode":
+                                pcode,
+
+                            "promoted":
+                                False,
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
 
             if mode == "baseline-all":
 
