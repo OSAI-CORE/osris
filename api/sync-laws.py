@@ -2262,6 +2262,131 @@ def update_regulation_review_date(
             None
     }
 
+def update_all_regulation_review_dates(
+    review_date
+):
+    """
+    將目前法規 Baseline 表內所有法規的
+    最近鑑別／登錄日同步為指定日期。
+
+    僅修改：
+    last_reviewed_date
+    updated_at
+
+    不修改：
+    baseline
+    pending
+    status
+    法規條文
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_date = (
+        normalize_regulation_date(
+            review_date
+        )
+    )
+
+    if not normalized_date:
+        return {
+            "success":
+                False,
+
+            "updatedCount":
+                0,
+
+            "lastReviewedDate":
+                None,
+
+            "error":
+                "鑑別日期格式錯誤"
+        }
+
+    now_iso = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+        time.gmtime()
+    )
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Content-Type":
+            "application/json",
+
+        "Prefer":
+            "return=representation"
+    }
+
+    # pcode 為此表必有欄位，
+    # 使用 not.is.null 只更新既有法規列。
+    response = requests.patch(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                "not.is.null"
+        },
+        json={
+            "last_reviewed_date":
+                normalized_date,
+
+            "updated_at":
+                now_iso
+        },
+        timeout=(8, 30)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase 全部鑑別日期更新失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if not isinstance(
+        rows,
+        list
+    ):
+        rows = []
+
+    return {
+        "success":
+            True,
+
+        "updatedCount":
+            len(
+                rows
+            ),
+
+        "lastReviewedDate":
+            normalized_date,
+
+        "error":
+            None
+    }
+
 def get_regulation_pending_list():
     """
     取得目前所有等待人工鑑別的法規。
@@ -3875,6 +4000,84 @@ class handler(BaseHTTPRequestHandler):
 
                             "data":
                                 [],
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
+
+            if mode == "review-all":
+
+                review_date_raw = str(
+                    query.get(
+                        "review_date",
+                        [""]
+                    )[0]
+                ).strip()
+
+                review_date = (
+                    normalize_regulation_date(
+                        review_date_raw
+                    )
+                )
+
+                if not review_date:
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "updatedCount":
+                                0,
+
+                            "lastReviewedDate":
+                                None,
+
+                            "error":
+                                (
+                                    "review_date "
+                                    "必須為 YYYY-MM-DD"
+                                )
+                        }
+                    )
+
+                    return
+
+                try:
+                    result = (
+                        update_all_regulation_review_dates(
+                            review_date
+                        )
+                    )
+
+                    status_code = (
+                        200
+                        if result.get(
+                            "success"
+                        )
+                        else 500
+                    )
+
+                    self.send_json(
+                        status_code,
+                        result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "updatedCount":
+                                0,
+
+                            "lastReviewedDate":
+                                review_date,
 
                             "error":
                                 str(exc)
