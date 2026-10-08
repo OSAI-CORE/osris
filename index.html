@@ -10630,13 +10630,18 @@ const loadCloudWorkspaceIntoSystem =
             'monitor'
         );
 
-        setLaws(
-            parsedData.laws
-        );
+const mergedWorkspaceLaws =
+    await mergeCentralRegulationStateIntoLaws(
+        parsedData.laws
+    );
 
-        setLawDetails(
-            parsedData.lawDetails
-        );
+setLaws(
+    mergedWorkspaceLaws
+);
+
+setLawDetails(
+    parsedData.lawDetails
+);
 
         const loadedWorkspaceName =
             String(
@@ -12913,6 +12918,200 @@ const applyImportedRegulationData = (importedData) => {
     };
 };
 
+/*
+ * =========================================================
+ * 將中央法規狀態套用至指定 laws
+ * =========================================================
+ *
+ * 用途：
+ * - 本機 JSON
+ * - Cloud Workspace
+ * - Cloud Preview
+ *
+ * 載入舊資料後，
+ * 重新以 Supabase 中央法規狀態
+ * 校正最新日期。
+ *
+ * 只覆蓋：
+ * - remoteDate
+ * - localCheckDate
+ *
+ * 不修改：
+ * - id
+ * - PCode
+ * - 法規名稱
+ * - 法規類型
+ * - 排序
+ * - lawDetails
+ */
+const mergeCentralRegulationStateIntoLaws =
+    async (
+        sourceLaws
+    ) => {
+
+    const baseLaws =
+        Array.isArray(
+            sourceLaws
+        )
+            ? sourceLaws.map(
+                law => ({
+                    ...law
+                })
+            )
+            : [];
+
+    try {
+        const stateResponse =
+            await fetch(
+                `/api/sync-laws?mode=state-list` +
+                `&_=${Date.now()}`,
+                {
+                    method: 'GET',
+                    cache: 'no-store',
+                    headers: {
+                        'Accept':
+                            'application/json',
+
+                        'Cache-Control':
+                            'no-cache',
+
+                        'Pragma':
+                            'no-cache'
+                    }
+                }
+            );
+
+        const stateText =
+            await stateResponse.text();
+
+        let stateResult;
+
+        try {
+            stateResult =
+                JSON.parse(
+                    stateText
+                );
+
+        } catch (parseError) {
+            throw new Error(
+                `中央法規狀態格式錯誤。HTTP ${stateResponse.status}`
+            );
+        }
+
+        if (
+            !stateResponse.ok ||
+            stateResult?.success !== true
+        ) {
+            throw new Error(
+                stateResult?.error ||
+                `中央法規狀態讀取失敗：HTTP ${stateResponse.status}`
+            );
+        }
+
+        const stateData =
+            Array.isArray(
+                stateResult.data
+            )
+                ? stateResult.data
+                : [];
+
+        const stateMap =
+            new Map(
+                stateData.map(
+                    item => [
+                        String(
+                            item?.Pcode || ''
+                        )
+                            .trim()
+                            .toUpperCase(),
+
+                        item
+                    ]
+                )
+            );
+
+        return baseLaws.map(
+            law => {
+
+                const normalizedPcode =
+                    String(
+                        law?.pcode || ''
+                    )
+                        .trim()
+                        .toUpperCase();
+
+                const centralState =
+                    stateMap.get(
+                        normalizedPcode
+                    );
+
+                if (!centralState) {
+                    return law;
+                }
+
+                const currentDate =
+                    String(
+                        centralState.CurrentDate ||
+                        ''
+                    ).trim();
+
+                const lastReviewedDate =
+                    String(
+                        centralState.LastReviewedDate ||
+                        ''
+                    ).trim();
+
+                const nextLaw = {
+                    ...law
+                };
+
+                /*
+                 * CurrentDate：
+                 * Pending 存在時為 pending_date，
+                 * 否則為 baseline_date。
+                 */
+                if (
+                    /^\d{4}-\d{2}-\d{2}$/.test(
+                        currentDate
+                    )
+                ) {
+                    nextLaw.remoteDate =
+                        currentDate;
+                }
+
+                /*
+                 * 中央有正式鑑別日期時，
+                 * 才覆蓋資料檔內的日期。
+                 */
+                if (
+                    /^\d{4}-\d{2}-\d{2}$/.test(
+                        lastReviewedDate
+                    )
+                ) {
+                    nextLaw.localCheckDate =
+                        lastReviewedDate;
+                }
+
+                return nextLaw;
+            }
+        );
+
+    } catch (error) {
+        /*
+         * 中央暫時無法讀取時，
+         * 不阻止 JSON / Cloud 資料載入。
+         *
+         * 直接保留原本資料檔內容。
+         */
+        console.warn(
+            '載入資料後中央法規狀態校正失敗，保留原資料日期：',
+            error
+        );
+
+        return baseLaws;
+    }
+};
+
 /* =========================================================
    Cloud Viewer：狀態與正式載入
 ========================================================= */
@@ -13277,13 +13476,18 @@ const submitCloudPreviewViewerOpen =
             'monitor'
         );
 
-        setLaws(
-            parsedData.laws
-        );
+const mergedCloudPreviewLaws =
+    await mergeCentralRegulationStateIntoLaws(
+        parsedData.laws
+    );
 
-        setLawDetails(
-            parsedData.lawDetails
-        );
+setLaws(
+    mergedCloudPreviewLaws
+);
+
+setLawDetails(
+    parsedData.lawDetails
+);
 
         /*
          * 沿用既有到期清除機制。
@@ -16070,15 +16274,18 @@ const importDatabase = (
                     'monitor'
                 );
 
+const mergedPreviewLaws =
+    await mergeCentralRegulationStateIntoLaws(
+        importedData.laws
+    );
 
-                setLaws(
-                    importedData.laws
-                );
+setLaws(
+    mergedPreviewLaws
+);
 
-                setLawDetails(
-                    importedData.lawDetails
-                );
-
+setLawDetails(
+    importedData.lawDetails
+);
 
                 /*
                  * 啟動到期 Timer。
@@ -16228,13 +16435,18 @@ clearActiveCloudWorkspace();
             );
 
 
-            setLaws(
-                parsedData.laws
-            );
+const mergedImportedLaws =
+    await mergeCentralRegulationStateIntoLaws(
+        parsedData.laws
+    );
 
-            setLawDetails(
-                parsedData.lawDetails
-            );
+setLaws(
+    mergedImportedLaws
+);
+
+setLawDetails(
+    parsedData.lawDetails
+);
 
 
             alert(
