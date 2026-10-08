@@ -1310,6 +1310,636 @@ def upsert_regulation_baseline(
             result
     }
 
+def get_regulation_baseline_for_diff(pcode):
+    """
+    取得指定法規目前正式 Baseline。
+
+    供自動新舊條文比對使用。
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    if not normalized_pcode:
+        return None
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Accept":
+            "application/json"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}",
+
+            "select":
+                (
+                    "pcode,"
+                    "law_name,"
+                    "baseline_date,"
+                    "baseline_articles,"
+                    "baseline_hash,"
+                    "pending_date,"
+                    "pending_hash,"
+                    "status"
+                ),
+
+            "limit":
+                "1"
+        },
+        timeout=(8, 20)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase baseline 查詢失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        isinstance(rows, list) and
+        len(rows) > 0
+    ):
+        return rows[0]
+
+    return None
+
+def regulation_article_sort_key(article_no):
+    """
+    將：
+    第 10 條
+    第 10-1 條
+    第 11 條
+
+    轉成可以穩定排序的 tuple。
+    """
+
+    value = str(
+        article_no or ""
+    )
+
+    match = re.search(
+        r"第\s*(\d+)"
+        r"(?:-(\d+))?"
+        r"\s*條",
+        value
+    )
+
+    if not match:
+        return (
+            999999,
+            999999,
+            value
+        )
+
+    main_no = int(
+        match.group(1)
+    )
+
+    sub_no = (
+        int(match.group(2))
+        if match.group(2)
+        else 0
+    )
+
+    return (
+        main_no,
+        sub_no,
+        value
+    )
+
+def build_regulation_diff(
+    baseline_articles,
+    current_articles
+):
+    """
+    比對 Baseline 與官方最新版條文。
+
+    回傳：
+    added
+    removed
+    modified
+
+    完全由程式比對，
+    不使用 AI 判斷實際條文差異。
+    """
+
+    old_articles = (
+        baseline_articles
+        if isinstance(
+            baseline_articles,
+            list
+        )
+        else []
+    )
+
+    new_articles = (
+        current_articles
+        if isinstance(
+            current_articles,
+            list
+        )
+        else []
+    )
+
+    old_map = {
+        str(
+            item.get(
+                "no",
+                ""
+            )
+        ).strip():
+            str(
+                item.get(
+                    "text",
+                    ""
+                )
+            ).strip()
+
+        for item in old_articles
+        if isinstance(item, dict)
+    }
+
+    new_map = {
+        str(
+            item.get(
+                "no",
+                ""
+            )
+        ).strip():
+            str(
+                item.get(
+                    "text",
+                    ""
+                )
+            ).strip()
+
+        for item in new_articles
+        if isinstance(item, dict)
+    }
+
+    changed_rows = []
+
+    all_article_numbers = set(
+        old_map.keys()
+    ) | set(
+        new_map.keys()
+    )
+
+    ordered_article_numbers = sorted(
+        all_article_numbers,
+        key=regulation_article_sort_key
+    )
+
+    for article_no in ordered_article_numbers:
+
+        old_text = old_map.get(
+            article_no
+        )
+
+        new_text = new_map.get(
+            article_no
+        )
+
+        if (
+            old_text is None and
+            new_text is not None
+        ):
+            changed_rows.append({
+                "no":
+                    article_no,
+
+                "changeType":
+                    "added",
+
+                "old":
+                    "",
+
+                "new":
+                    new_text,
+
+                "note":
+                    "新增條文"
+            })
+
+            continue
+
+        if (
+            old_text is not None and
+            new_text is None
+        ):
+            changed_rows.append({
+                "no":
+                    article_no,
+
+                "changeType":
+                    "removed",
+
+                "old":
+                    old_text,
+
+                "new":
+                    "",
+
+                "note":
+                    "刪除條文"
+            })
+
+            continue
+
+        if old_text != new_text:
+            changed_rows.append({
+                "no":
+                    article_no,
+
+                "changeType":
+                    "modified",
+
+                "old":
+                    old_text,
+
+                "new":
+                    new_text,
+
+                "note":
+                    "條文內容修正"
+            })
+
+    return changed_rows
+
+def save_regulation_pending_diff(
+    pcode,
+    snapshot,
+    pending_diff
+):
+    """
+    將最新版 Snapshot 與 Diff
+    保存到目前 Baseline 紀錄的 pending 區。
+
+    不覆蓋 baseline。
+    """
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    articles = snapshot.get(
+        "articles",
+        []
+    )
+
+    pending_hash = (
+        build_articles_hash(
+            articles
+        )
+    )
+
+    now_iso = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+        time.gmtime()
+    )
+
+    payload = {
+        "pending_date":
+            snapshot.get(
+                "date"
+            ),
+
+        "pending_articles":
+            articles,
+
+        "pending_diff":
+            pending_diff,
+
+        "pending_hash":
+            pending_hash,
+
+        "status":
+            "pending_review",
+
+        "source_url":
+            snapshot.get(
+                "sourceUrl"
+            ),
+
+        "last_error":
+            None,
+
+        "last_synced_at":
+            now_iso,
+
+        "updated_at":
+            now_iso
+    }
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Content-Type":
+            "application/json",
+
+        "Prefer":
+            "return=representation"
+    }
+
+    response = requests.patch(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}"
+        },
+        json=payload,
+        timeout=(8, 25)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase pending diff 寫入失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        result = response.json()
+
+    except ValueError:
+        result = []
+
+    return {
+        "success":
+            True,
+
+        "pendingDate":
+            snapshot.get(
+                "date"
+            ),
+
+        "pendingHash":
+            pending_hash,
+
+        "changedCount":
+            len(
+                pending_diff
+            ),
+
+        "data":
+            result
+    }
+
+def analyze_regulation_update(pcode):
+    """
+    對單一法規執行：
+
+    Baseline
+    VS
+    官方最新 Snapshot
+
+    有異動：
+    → 建立 pending diff
+
+    無異動：
+    → 不修改 Baseline。
+    """
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    baseline = (
+        get_regulation_baseline_for_diff(
+            normalized_pcode
+        )
+    )
+
+    if not baseline:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "status":
+                "baseline_missing",
+
+            "changed":
+                False,
+
+            "changedCount":
+                0,
+
+            "diff":
+                [],
+
+            "error":
+                "找不到此法規的 Baseline"
+        }
+
+    snapshot = (
+        get_law_snapshot(
+            normalized_pcode
+        )
+    )
+
+    if not snapshot.get(
+        "success"
+    ):
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "status":
+                "snapshot_error",
+
+            "changed":
+                False,
+
+            "changedCount":
+                0,
+
+            "diff":
+                [],
+
+            "error":
+                snapshot.get(
+                    "error"
+                )
+        }
+
+    baseline_articles = (
+        baseline.get(
+            "baseline_articles"
+        ) or []
+    )
+
+    baseline_hash = (
+        baseline.get(
+            "baseline_hash"
+        ) or
+        build_articles_hash(
+            baseline_articles
+        )
+    )
+
+    current_hash = (
+        build_articles_hash(
+            snapshot.get(
+                "articles",
+                []
+            )
+        )
+    )
+
+    baseline_date = str(
+        baseline.get(
+            "baseline_date"
+        ) or ""
+    )
+
+    current_date = str(
+        snapshot.get(
+            "date"
+        ) or ""
+    )
+
+    if (
+        baseline_hash == current_hash and
+        baseline_date == current_date
+    ):
+        return {
+            "success":
+                True,
+
+            "pcode":
+                normalized_pcode,
+
+            "lawName":
+                baseline.get(
+                    "law_name"
+                ),
+
+            "status":
+                "no_change",
+
+            "changed":
+                False,
+
+            "baselineDate":
+                baseline_date,
+
+            "currentDate":
+                current_date,
+
+            "changedCount":
+                0,
+
+            "diff":
+                [],
+
+            "error":
+                None
+        }
+
+    pending_diff = (
+        build_regulation_diff(
+            baseline_articles,
+            snapshot.get(
+                "articles",
+                []
+            )
+        )
+    )
+
+    save_result = (
+        save_regulation_pending_diff(
+            normalized_pcode,
+            snapshot,
+            pending_diff
+        )
+    )
+
+    return {
+        "success":
+            True,
+
+        "pcode":
+            normalized_pcode,
+
+        "lawName":
+            baseline.get(
+                "law_name"
+            ),
+
+        "status":
+            "pending_review",
+
+        "changed":
+            True,
+
+        "baselineDate":
+            baseline_date,
+
+        "currentDate":
+            current_date,
+
+        "changedCount":
+            len(
+                pending_diff
+            ),
+
+        "diff":
+            pending_diff,
+
+        "pendingHash":
+            save_result.get(
+                "pendingHash"
+            ),
+
+        "error":
+            None
+    }    
+
 def fetch_one_law(law):
     pcode = str(
         law.get("pcode", "")
@@ -1527,6 +2157,62 @@ class handler(BaseHTTPRequestHandler):
                     self.send_json(
                         200,
                         save_result
+                    )
+
+                except Exception as exc:
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "pcode":
+                                pcode,
+
+                            "error":
+                                str(exc)
+                        }
+                    )
+
+                return
+
+            if mode == "diff":
+
+                pcode = str(
+                    query.get(
+                        "pcode",
+                        [""]
+                    )[0]
+                ).strip().upper()
+
+                if not pcode:
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "缺少 pcode"
+                        }
+                    )
+
+                    return
+
+                try:
+                    result = (
+                        analyze_regulation_update(
+                            pcode
+                        )
+                    )
+
+                    self.send_json(
+                        200
+                        if result.get(
+                            "success"
+                        )
+                        else 500,
+                        result
                     )
 
                 except Exception as exc:
