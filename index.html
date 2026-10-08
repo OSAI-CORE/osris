@@ -17210,9 +17210,9 @@ const handleAllSync = async () => {
 
     const controller = new AbortController();
 
-    const timeoutId = setTimeout(() => {
-        controller.abort();
-    }, 60000);
+const timeoutId = setTimeout(() => {
+    controller.abort();
+}, 120000);
 
     try {
 const response = await fetch(
@@ -17469,6 +17469,31 @@ const handleSingleSync = (
         return;
     }
 
+    const targetLaw =
+        laws.find(
+            law =>
+                law.id === lawId
+        ) ||
+        (
+            selectedLaw &&
+            selectedLaw.id === lawId
+                ? selectedLaw
+                : null
+        );
+
+    const pcode = String(
+        targetLaw?.pcode || ''
+    )
+        .trim()
+        .toUpperCase();
+
+    if (!pcode) {
+        alert(
+            '此法規缺少 PCode，無法完成鑑別。'
+        );
+        return;
+    }
+
     const unsavedNotice =
         returnToMonitor &&
         workbenchManualDirtyRef.current
@@ -17498,8 +17523,69 @@ const handleSingleSync = (
 
         try {
             /*
-             * 直接保存 localCheckDate，
-             * 不受監控清單人工 dirty 狀態影響。
+             * 若此法規目前存在 pending_review，
+             * 先將 Pending 正式升格為新 Baseline。
+             *
+             * 若沒有 Pending，
+             * 後端會回傳 no_pending，
+             * 仍視為可正常完成鑑別，
+             * 保留原本人工完成鑑別流程。
+             */
+            const approveResponse =
+                await fetch(
+                    `/api/sync-laws?mode=approve` +
+                    `&pcode=${encodeURIComponent(pcode)}` +
+                    `&_=${Date.now()}`,
+                    {
+                        method: 'GET',
+                        cache: 'no-store',
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'Cache-Control':
+                                'no-cache',
+
+                            'Pragma':
+                                'no-cache'
+                        }
+                    }
+                );
+
+            const approveText =
+                await approveResponse.text();
+
+            let approveResult;
+
+            try {
+                approveResult =
+                    JSON.parse(
+                        approveText
+                    );
+
+            } catch (parseError) {
+                throw new Error(
+                    `後端未回傳有效完成鑑別資料。HTTP ${approveResponse.status}：` +
+                    approveText.slice(
+                        0,
+                        200
+                    )
+                );
+            }
+
+            if (
+                !approveResponse.ok ||
+                approveResult?.success !== true
+            ) {
+                throw new Error(
+                    approveResult?.error ||
+                    `Baseline 升格失敗：HTTP ${approveResponse.status}`
+                );
+            }
+
+            /*
+             * Supabase 確認完成後，
+             * 才執行原本既有 localCheckDate 更新。
              */
             await persistLawSystemUpdates([
                 {
@@ -17540,13 +17626,16 @@ const handleSingleSync = (
 
         } catch (error) {
             console.error(
-                '完成鑑別日期儲存失敗：',
+                '完成鑑別失敗：',
                 error
             );
 
             alert(
-                '鑑別日期儲存失敗，' +
-                '請稍後再試。'
+                '完成鑑別失敗。\n\n' +
+                (
+                    error.message ||
+                    '請稍後再試。'
+                )
             );
 
         } finally {
@@ -17900,7 +17989,7 @@ const handleExport = () => {
                 return laws.filter(law => (filterType === '全部' || law.type === filterType) && (law.name.includes(searchQuery) || law.pcode.includes(searchQuery)));
             }, [searchQuery, filterType, laws]);
 
-const startSync = (law) => {
+const startSync = async (law) => {
     if (!canViewCompareDetail()) {
         alert('目前權限無法查看比對詳情。');
         return;
@@ -17915,14 +18004,238 @@ const startSync = (law) => {
         document.body.scrollTop ||
         0;
 
-    setSyncText(`正在連線資料庫讀取《${law.name}》最新條文.`);
+    setSyncText(
+        `正在連線資料庫讀取《${law.name}》最新條文.`
+    );
+
     setIsSyncing(true);
 
-    setTimeout(() => {
-        setSelectedLaw(law);
-        setActiveTab('compare');
+    /*
+     * 保留原本至少約 1.5 秒的讀取體感，
+     * 不改變既有 Loading 畫面節奏。
+     */
+    const startedAt =
+        Date.now();
+
+    try {
+        const pcode = String(
+            law?.pcode || ''
+        )
+            .trim()
+            .toUpperCase();
+
+        if (!pcode) {
+            throw new Error(
+                '此法規缺少 PCode'
+            );
+        }
+
+        const response = await fetch(
+            `/api/sync-laws?mode=pending` +
+            `&pcode=${encodeURIComponent(pcode)}` +
+            `&_=${Date.now()}`,
+            {
+                method: 'GET',
+                cache: 'no-store',
+                headers: {
+                    'Accept':
+                        'application/json',
+
+                    'Cache-Control':
+                        'no-cache',
+
+                    'Pragma':
+                        'no-cache'
+                }
+            }
+        );
+
+        const responseText =
+            await response.text();
+
+        let result;
+
+        try {
+            result =
+                JSON.parse(
+                    responseText
+                );
+
+        } catch (parseError) {
+            throw new Error(
+                `後端未回傳有效比對資料。HTTP ${response.status}：` +
+                responseText.slice(
+                    0,
+                    200
+                )
+            );
+        }
+
+        if (
+            !response.ok ||
+            result?.success !== true
+        ) {
+            throw new Error(
+                result?.error ||
+                `比對資料讀取失敗：HTTP ${response.status}`
+            );
+        }
+
+        /*
+         * 有真正 pending_review 時，
+         * 才以 Supabase 自動比對結果
+         * 更新目前這一部法規的工作台。
+         *
+         * 沒有 Pending：
+         * 原本 HTML / JSON 內既有 lawDetails
+         * 完全保留，不清空、不覆蓋。
+         */
+        if (result.hasPending === true) {
+
+            const pendingRows =
+                Array.isArray(
+                    result.diff
+                )
+                    ? result.diff.map(
+                        item => {
+
+                            let fallbackNote =
+                                '條文異動';
+
+                            if (
+                                item?.changeType ===
+                                'added'
+                            ) {
+                                fallbackNote =
+                                    '新增條文';
+
+                            } else if (
+                                item?.changeType ===
+                                'removed'
+                            ) {
+                                fallbackNote =
+                                    '刪除條文';
+
+                            } else if (
+                                item?.changeType ===
+                                'modified'
+                            ) {
+                                fallbackNote =
+                                    '條文內容修正';
+                            }
+
+                            return {
+                                no:
+                                    String(
+                                        item?.no ??
+                                        ''
+                                    ),
+
+                                old:
+                                    String(
+                                        item?.old ??
+                                        ''
+                                    ),
+
+                                new:
+                                    String(
+                                        item?.new ??
+                                        ''
+                                    ),
+
+                                note:
+                                    String(
+                                        item?.note ||
+                                        fallbackNote
+                                    )
+                            };
+                        }
+                    )
+                    : [];
+
+            setLawDetails(
+                prev => ({
+                    ...prev,
+
+                    [law.id]: {
+                        rows:
+                            pendingRows
+                    }
+                })
+            );
+        }
+
+        /*
+         * 維持原本至少 1.5 秒的
+         * 鑑別工作台讀取動畫。
+         */
+        const elapsed =
+            Date.now() -
+            startedAt;
+
+        if (elapsed < 1500) {
+            await new Promise(
+                resolve =>
+                    setTimeout(
+                        resolve,
+                        1500 - elapsed
+                    )
+            );
+        }
+
+        /*
+         * 若存在 Pending，
+         * 工作台優先顯示 Pending 的官方日期。
+         *
+         * 一般正常流程下，
+         * 智能同步已經先更新 remoteDate，
+         * 所以這只是額外防呆。
+         */
+        const pendingDate =
+            String(
+                result.pendingDate ||
+                ''
+            );
+
+        const selectedRemoteDate =
+            (
+                result.hasPending === true &&
+                /^\d{4}-\d{2}-\d{2}$/.test(
+                    pendingDate
+                )
+            )
+                ? pendingDate
+                : law.remoteDate;
+
+        setSelectedLaw({
+            ...law,
+            remoteDate:
+                selectedRemoteDate
+        });
+
+        setActiveTab(
+            'compare'
+        );
+
+    } catch (error) {
+        console.error(
+            '鑑別工作台最新比對資料讀取失敗：',
+            error
+        );
+
+        alert(
+            '最新法規比對資料讀取失敗。\n\n' +
+            (
+                error.message ||
+                '未知錯誤'
+            ) +
+            '\n\n為避免顯示可能過期的條文，' +
+            '本次不進入鑑別工作台。'
+        );
+
+    } finally {
         setIsSyncing(false);
-    }, 1500);
+    }
 };
 
 const handleBackToMonitor = () => {
