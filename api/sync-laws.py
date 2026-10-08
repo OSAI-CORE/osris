@@ -2200,6 +2200,141 @@ def initialize_one_regulation_baseline(law):
                 str(exc)
         }
 
+def analyze_one_regulation_batch(law):
+    """
+    批次執行單一法規的新舊條文比對。
+
+    完整 Diff 已保存到 Supabase pending_diff，
+    批次回傳只提供摘要，
+    避免一次回傳大量完整條文。
+    """
+
+    pcode = str(
+        law.get(
+            "pcode",
+            ""
+        )
+    ).strip().upper()
+
+    law_name = str(
+        law.get(
+            "name",
+            ""
+        )
+    ).strip()
+
+    if not pcode:
+        return {
+            "Pcode": "",
+            "Name":
+                law_name,
+            "Success":
+                False,
+            "Status":
+                "invalid_pcode",
+            "Changed":
+                False,
+            "BaselineDate":
+                None,
+            "CurrentDate":
+                None,
+            "ChangedCount":
+                0,
+            "Error":
+                "law_list.json 缺少 pcode"
+        }
+
+    try:
+        result = (
+            analyze_regulation_update(
+                pcode
+            )
+        )
+
+        return {
+            "Pcode":
+                pcode,
+
+            "Name":
+                (
+                    result.get(
+                        "lawName"
+                    ) or
+                    law_name
+                ),
+
+            "Success":
+                bool(
+                    result.get(
+                        "success"
+                    )
+                ),
+
+            "Status":
+                result.get(
+                    "status"
+                ),
+
+            "Changed":
+                bool(
+                    result.get(
+                        "changed"
+                    )
+                ),
+
+            "BaselineDate":
+                result.get(
+                    "baselineDate"
+                ),
+
+            "CurrentDate":
+                result.get(
+                    "currentDate"
+                ),
+
+            "ChangedCount":
+                int(
+                    result.get(
+                        "changedCount"
+                    ) or 0
+                ),
+
+            "Error":
+                result.get(
+                    "error"
+                )
+        }
+
+    except Exception as exc:
+        return {
+            "Pcode":
+                pcode,
+
+            "Name":
+                law_name,
+
+            "Success":
+                False,
+
+            "Status":
+                "error",
+
+            "Changed":
+                False,
+
+            "BaselineDate":
+                None,
+
+            "CurrentDate":
+                None,
+
+            "ChangedCount":
+                0,
+
+            "Error":
+                str(exc)
+        }
+
 def fetch_one_law(law):
     pcode = str(
         law.get("pcode", "")
@@ -2703,6 +2838,250 @@ class handler(BaseHTTPRequestHandler):
 
                 return
 
+            if mode == "diff-all":
+
+                if not os.path.exists(
+                    LAW_LIST_PATH
+                ):
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                (
+                                    "找不到法規清單檔案："
+                                    f"{LAW_LIST_PATH}"
+                                )
+                        }
+                    )
+
+                    return
+
+                with open(
+                    LAW_LIST_PATH,
+                    "r",
+                    encoding="utf-8"
+                ) as file:
+                    diff_law_list = (
+                        json.load(
+                            file
+                        )
+                    )
+
+                if not isinstance(
+                    diff_law_list,
+                    list
+                ):
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                (
+                                    "law_list.json "
+                                    "最外層必須是陣列"
+                                )
+                        }
+                    )
+
+                    return
+
+                diff_results = []
+
+                # 完整條文同步與 Diff
+                # 同時最多處理 2 部法規。
+                #
+                # 每一部法規只向官方網站
+                # 發出一次 Snapshot Request。
+                with ThreadPoolExecutor(
+                    max_workers=2
+                ) as executor:
+
+                    future_map = {
+                        executor.submit(
+                            analyze_one_regulation_batch,
+                            law
+                        ): law
+
+                        for law in diff_law_list
+                    }
+
+                    for future in as_completed(
+                        future_map
+                    ):
+                        source_law = (
+                            future_map[
+                                future
+                            ]
+                        )
+
+                        try:
+                            result = (
+                                future.result()
+                            )
+
+                        except Exception as exc:
+                            result = {
+                                "Pcode":
+                                    str(
+                                        source_law.get(
+                                            "pcode",
+                                            ""
+                                        )
+                                    )
+                                    .strip()
+                                    .upper(),
+
+                                "Name":
+                                    source_law.get(
+                                        "name",
+                                        ""
+                                    ),
+
+                                "Success":
+                                    False,
+
+                                "Status":
+                                    "error",
+
+                                "Changed":
+                                    False,
+
+                                "BaselineDate":
+                                    None,
+
+                                "CurrentDate":
+                                    None,
+
+                                "ChangedCount":
+                                    0,
+
+                                "Error":
+                                    str(exc)
+                            }
+
+                        diff_results.append(
+                            result
+                        )
+
+                diff_order_map = {
+                    str(
+                        law.get(
+                            "pcode",
+                            ""
+                        )
+                    )
+                    .strip()
+                    .upper():
+                        index
+
+                    for index, law
+                    in enumerate(
+                        diff_law_list
+                    )
+                }
+
+                diff_results.sort(
+                    key=lambda item:
+                        diff_order_map.get(
+                            item.get(
+                                "Pcode",
+                                ""
+                            ),
+                            999999
+                        )
+                )
+
+                changed_law_count = sum(
+                    1
+                    for item
+                    in diff_results
+                    if (
+                        item.get(
+                            "Success"
+                        ) and
+                        item.get(
+                            "Changed"
+                        )
+                    )
+                )
+
+                no_change_count = sum(
+                    1
+                    for item
+                    in diff_results
+                    if (
+                        item.get(
+                            "Success"
+                        ) and
+                        item.get(
+                            "Status"
+                        ) == "no_change"
+                    )
+                )
+
+                failed_count = sum(
+                    1
+                    for item
+                    in diff_results
+                    if not item.get(
+                        "Success"
+                    )
+                )
+
+                total_changed_articles = sum(
+                    int(
+                        item.get(
+                            "ChangedCount"
+                        ) or 0
+                    )
+                    for item
+                    in diff_results
+                    if item.get(
+                        "Success"
+                    )
+                )
+
+                self.send_json(
+                    200,
+                    {
+                        "success":
+                            failed_count == 0,
+
+                        "count":
+                            len(
+                                diff_results
+                            ),
+
+                        "changedLawCount":
+                            changed_law_count,
+
+                        "noChangeCount":
+                            no_change_count,
+
+                        "failedCount":
+                            failed_count,
+
+                        "totalChangedArticles":
+                            total_changed_articles,
+
+                        "elapsedSeconds":
+                            round(
+                                time.time()
+                                - started_at,
+                                2
+                            ),
+
+                        "data":
+                            diff_results
+                    }
+                )
+
+                return
 
             if not os.path.exists(LAW_LIST_PATH):
                 raise FileNotFoundError(
