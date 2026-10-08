@@ -1940,6 +1940,266 @@ def analyze_regulation_update(pcode):
             None
     }    
 
+def get_existing_regulation_baseline(pcode):
+    """
+    檢查指定 PCode 是否已經存在 Baseline。
+
+    只讀取必要欄位，
+    不下載完整 baseline_articles。
+    """
+
+    if not REGULATION_SUPABASE_URL:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_URL"
+        )
+
+    if not REGULATION_SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError(
+            "缺少 OSRIS_REGULATION_SUPABASE_SERVICE_ROLE_KEY"
+        )
+
+    normalized_pcode = str(
+        pcode or ""
+    ).strip().upper()
+
+    if not normalized_pcode:
+        return None
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{REGULATION_BASELINE_TABLE}"
+    )
+
+    headers = {
+        "apikey":
+            REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+        "Accept":
+            "application/json"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={
+            "pcode":
+                f"eq.{normalized_pcode}",
+
+            "select":
+                (
+                    "pcode,"
+                    "law_name,"
+                    "baseline_date,"
+                    "status"
+                ),
+
+            "limit":
+                "1"
+        },
+        timeout=(8, 20)
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Supabase baseline 查詢失敗："
+            f"HTTP {response.status_code}；"
+            f"{response.text[:500]}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        isinstance(rows, list) and
+        len(rows) > 0
+    ):
+        return rows[0]
+
+    return None
+
+def initialize_one_regulation_baseline(law):
+    """
+    建立單一法規初始 Baseline。
+
+    已存在：
+    → 跳過，不覆蓋。
+
+    不存在：
+    → 取得官方 Snapshot
+    → 建立 Baseline。
+    """
+
+    pcode = str(
+        law.get(
+            "pcode",
+            ""
+        )
+    ).strip().upper()
+
+    law_name = str(
+        law.get(
+            "name",
+            ""
+        )
+    ).strip()
+
+    if not pcode:
+        return {
+            "Pcode": "",
+            "Name":
+                law_name,
+            "Success":
+                False,
+            "Action":
+                "failed",
+            "Date":
+                None,
+            "ArticleCount":
+                0,
+            "Error":
+                "law_list.json 缺少 pcode"
+        }
+
+    try:
+        existing = (
+            get_existing_regulation_baseline(
+                pcode
+            )
+        )
+
+        if existing:
+            return {
+                "Pcode":
+                    pcode,
+
+                "Name":
+                    (
+                        existing.get(
+                            "law_name"
+                        ) or
+                        law_name
+                    ),
+
+                "Success":
+                    True,
+
+                "Action":
+                    "skipped",
+
+                "Date":
+                    existing.get(
+                        "baseline_date"
+                    ),
+
+                "ArticleCount":
+                    None,
+
+                "Error":
+                    None
+            }
+
+        snapshot = (
+            get_law_snapshot(
+                pcode
+            )
+        )
+
+        if not snapshot.get(
+            "success"
+        ):
+            return {
+                "Pcode":
+                    pcode,
+
+                "Name":
+                    law_name,
+
+                "Success":
+                    False,
+
+                "Action":
+                    "failed",
+
+                "Date":
+                    snapshot.get(
+                        "date"
+                    ),
+
+                "ArticleCount":
+                    0,
+
+                "Error":
+                    (
+                        snapshot.get(
+                            "error"
+                        ) or
+                        "Snapshot 建立失敗"
+                    )
+            }
+
+        save_result = (
+            upsert_regulation_baseline(
+                pcode,
+                law_name,
+                snapshot
+            )
+        )
+
+        return {
+            "Pcode":
+                pcode,
+
+            "Name":
+                law_name,
+
+            "Success":
+                True,
+
+            "Action":
+                "created",
+
+            "Date":
+                save_result.get(
+                    "baselineDate"
+                ),
+
+            "ArticleCount":
+                save_result.get(
+                    "articleCount"
+                ),
+
+            "Error":
+                None
+        }
+
+    except Exception as exc:
+        return {
+            "Pcode":
+                pcode,
+
+            "Name":
+                law_name,
+
+            "Success":
+                False,
+
+            "Action":
+                "failed",
+
+            "Date":
+                None,
+
+            "ArticleCount":
+                0,
+
+            "Error":
+                str(exc)
+        }
+
 def fetch_one_law(law):
     pcode = str(
         law.get("pcode", "")
@@ -2231,6 +2491,218 @@ class handler(BaseHTTPRequestHandler):
                     )
 
                 return
+
+
+            if mode == "baseline-all":
+
+                if not os.path.exists(
+                    LAW_LIST_PATH
+                ):
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                (
+                                    "找不到法規清單檔案："
+                                    f"{LAW_LIST_PATH}"
+                                )
+                        }
+                    )
+
+                    return
+
+                with open(
+                    LAW_LIST_PATH,
+                    "r",
+                    encoding="utf-8"
+                ) as file:
+                    baseline_law_list = json.load(
+                        file
+                    )
+
+                if not isinstance(
+                    baseline_law_list,
+                    list
+                ):
+                    self.send_json(
+                        500,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "law_list.json 最外層必須是陣列"
+                        }
+                    )
+
+                    return
+
+                baseline_results = []
+
+                with ThreadPoolExecutor(
+                    max_workers=2
+                ) as executor:
+
+                    future_map = {
+                        executor.submit(
+                            initialize_one_regulation_baseline,
+                            law
+                        ): law
+                        for law in baseline_law_list
+                    }
+
+                    for future in as_completed(
+                        future_map
+                    ):
+                        source_law = (
+                            future_map[
+                                future
+                            ]
+                        )
+
+                        try:
+                            result = future.result()
+
+                        except Exception as exc:
+                            result = {
+                                "Pcode":
+                                    str(
+                                        source_law.get(
+                                            "pcode",
+                                            ""
+                                        )
+                                    )
+                                    .strip()
+                                    .upper(),
+
+                                "Name":
+                                    source_law.get(
+                                        "name",
+                                        ""
+                                    ),
+
+                                "Success":
+                                    False,
+
+                                "Action":
+                                    "failed",
+
+                                "Date":
+                                    None,
+
+                                "ArticleCount":
+                                    0,
+
+                                "Error":
+                                    str(exc)
+                            }
+
+                        baseline_results.append(
+                            result
+                        )
+
+                baseline_order_map = {
+                    str(
+                        law.get(
+                            "pcode",
+                            ""
+                        )
+                    )
+                    .strip()
+                    .upper():
+                        index
+
+                    for index, law
+                    in enumerate(
+                        baseline_law_list
+                    )
+                }
+
+                baseline_results.sort(
+                    key=lambda item:
+                        baseline_order_map.get(
+                            item.get(
+                                "Pcode",
+                                ""
+                            ),
+                            999999
+                        )
+                )
+
+                created_count = sum(
+                    1
+                    for item
+                    in baseline_results
+                    if (
+                        item.get(
+                            "Success"
+                        ) and
+                        item.get(
+                            "Action"
+                        ) == "created"
+                    )
+                )
+
+                skipped_count = sum(
+                    1
+                    for item
+                    in baseline_results
+                    if (
+                        item.get(
+                            "Success"
+                        ) and
+                        item.get(
+                            "Action"
+                        ) == "skipped"
+                    )
+                )
+
+                failed_count = sum(
+                    1
+                    for item
+                    in baseline_results
+                    if not item.get(
+                        "Success"
+                    )
+                )
+
+                self.send_json(
+                    200,
+                    {
+                        "success":
+                            failed_count == 0,
+
+                        "count":
+                            len(
+                                baseline_results
+                            ),
+
+                        "createdCount":
+                            created_count,
+
+                        "skippedCount":
+                            skipped_count,
+
+                        "failedCount":
+                            failed_count,
+
+                        "elapsedSeconds":
+                            round(
+                                time.time()
+                                - started_at,
+                                2
+                            ),
+
+                        "data":
+                            baseline_results
+                    }
+                )
+
+                return
+
 
             if not os.path.exists(LAW_LIST_PATH):
                 raise FileNotFoundError(
