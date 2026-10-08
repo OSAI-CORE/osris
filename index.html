@@ -17531,11 +17531,12 @@ const handleSingleSync = (
              * 仍視為可正常完成鑑別，
              * 保留原本人工完成鑑別流程。
              */
-            const approveResponse =
-                await fetch(
-                    `/api/sync-laws?mode=approve` +
-                    `&pcode=${encodeURIComponent(pcode)}` +
-                    `&_=${Date.now()}`,
+const approveResponse =
+    await fetch(
+        `/api/sync-laws?mode=approve` +
+        `&pcode=${encodeURIComponent(pcode)}` +
+        `&review_date=${encodeURIComponent(today)}` +
+        `&_=${Date.now()}`,
                     {
                         method: 'GET',
                         cache: 'no-store',
@@ -17667,6 +17668,74 @@ const handleAdminSyncIdentification =
     }
 
     try {
+        /*
+         * 先同步中央法規狀態。
+         *
+         * 此端點只更新：
+         * last_reviewed_date
+         *
+         * 不會：
+         * 升格 Pending
+         * 清除 Pending
+         * 修改 Baseline
+         * 修改法規條文
+         */
+        const reviewResponse =
+            await fetch(
+                `/api/sync-laws?mode=review-all` +
+                `&review_date=${encodeURIComponent(today)}` +
+                `&_=${Date.now()}`,
+                {
+                    method: 'GET',
+                    cache: 'no-store',
+                    headers: {
+                        'Accept':
+                            'application/json',
+
+                        'Cache-Control':
+                            'no-cache',
+
+                        'Pragma':
+                            'no-cache'
+                    }
+                }
+            );
+
+        const reviewText =
+            await reviewResponse.text();
+
+        let reviewResult;
+
+        try {
+            reviewResult =
+                JSON.parse(
+                    reviewText
+                );
+
+        } catch (parseError) {
+            throw new Error(
+                `後端未回傳有效同步鑑別資料。HTTP ${reviewResponse.status}：` +
+                reviewText.slice(
+                    0,
+                    200
+                )
+            );
+        }
+
+        if (
+            !reviewResponse.ok ||
+            reviewResult?.success !== true
+        ) {
+            throw new Error(
+                reviewResult?.error ||
+                `中央鑑別日期同步失敗：HTTP ${reviewResponse.status}`
+            );
+        }
+
+        /*
+         * 中央資料確認成功後，
+         * 再執行原本既有前端同步鑑別流程。
+         */
         await persistLawSystemUpdates(
             laws.map(law => ({
                 id: law.id,
