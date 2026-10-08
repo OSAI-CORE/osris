@@ -7093,6 +7093,173 @@ const canConfirmIdentification = () =>
                             });
                         }
 
+/*
+ * =========================================================
+ * 啟動時同步中央法規狀態
+ * =========================================================
+ *
+ * 只覆蓋：
+ * - remoteDate
+ * - localCheckDate
+ *
+ * 不修改：
+ * - 法規名稱
+ * - PCode
+ * - 類型
+ * - 排序
+ * - lawDetails
+ * - 權限
+ * - JSON / Cloud 資料結構
+ */
+try {
+    const stateResponse =
+        await fetch(
+            `/api/sync-laws?mode=state-list` +
+            `&_=${Date.now()}`,
+            {
+                method: 'GET',
+                cache: 'no-store',
+                headers: {
+                    'Accept':
+                        'application/json',
+
+                    'Cache-Control':
+                        'no-cache',
+
+                    'Pragma':
+                        'no-cache'
+                }
+            }
+        );
+
+    const stateText =
+        await stateResponse.text();
+
+    let stateResult;
+
+    try {
+        stateResult =
+            JSON.parse(
+                stateText
+            );
+
+    } catch (parseError) {
+        throw new Error(
+            `中央法規狀態格式錯誤。HTTP ${stateResponse.status}`
+        );
+    }
+
+    if (
+        !stateResponse.ok ||
+        stateResult?.success !== true
+    ) {
+        throw new Error(
+            stateResult?.error ||
+            `中央法規狀態讀取失敗：HTTP ${stateResponse.status}`
+        );
+    }
+
+    const stateData =
+        Array.isArray(
+            stateResult.data
+        )
+            ? stateResult.data
+            : [];
+
+    const stateMap =
+        new Map(
+            stateData.map(
+                item => [
+                    String(
+                        item?.Pcode || ''
+                    )
+                        .trim()
+                        .toUpperCase(),
+
+                    item
+                ]
+            )
+        );
+
+    setLaws(prev =>
+        prev.map(law => {
+
+            const normalizedPcode =
+                String(
+                    law?.pcode || ''
+                )
+                    .trim()
+                    .toUpperCase();
+
+            const centralState =
+                stateMap.get(
+                    normalizedPcode
+                );
+
+            if (!centralState) {
+                return law;
+            }
+
+            const currentDate =
+                String(
+                    centralState.CurrentDate ||
+                    ''
+                ).trim();
+
+            const lastReviewedDate =
+                String(
+                    centralState.LastReviewedDate ||
+                    ''
+                ).trim();
+
+            const nextLaw = {
+                ...law
+            };
+
+            /*
+             * CurrentDate：
+             * 有 Pending 時為 pending_date，
+             * 無 Pending 時為 baseline_date。
+             */
+            if (
+                /^\d{4}-\d{2}-\d{2}$/.test(
+                    currentDate
+                )
+            ) {
+                nextLaw.remoteDate =
+                    currentDate;
+            }
+
+            /*
+             * 中央已有鑑別日期時才覆蓋。
+             * 若仍為 null，
+             * 保留原本 HTML / JSON 日期。
+             */
+            if (
+                /^\d{4}-\d{2}-\d{2}$/.test(
+                    lastReviewedDate
+                )
+            ) {
+                nextLaw.localCheckDate =
+                    lastReviewedDate;
+            }
+
+            return nextLaw;
+        })
+    );
+
+} catch (error) {
+    /*
+     * 中央狀態暫時不可用時，
+     * 不阻止系統開啟。
+     *
+     * 繼續使用 HTML 內建基準資料。
+     */
+    console.warn(
+        '中央法規狀態讀取失敗，改用目前基準資料：',
+        error
+    );
+}
 
 /*
  * 每次重新整理都從 Viewer 開始。
