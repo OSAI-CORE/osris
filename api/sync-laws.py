@@ -4972,7 +4972,7 @@ class handler(BaseHTTPRequestHandler):
 
         self.send_header(
             "Access-Control-Allow-Methods",
-            "GET, OPTIONS"
+            "GET, POST, OPTIONS"
         )
 
         self.send_header(
@@ -5103,7 +5103,7 @@ class handler(BaseHTTPRequestHandler):
 
         self.send_header(
             "Access-Control-Allow-Methods",
-            "GET, OPTIONS"
+            "GET, POST, OPTIONS"
         )
 
         self.send_header(
@@ -5116,18 +5116,332 @@ class handler(BaseHTTPRequestHandler):
 
         self.end_headers()
 
+    def do_POST(self):
+        """
+        寫入型 Regulation API。
+
+        外部 POST：
+        JSON Body
+            ↓
+        轉成目前既有 query 介面
+            ↓
+        共用原本成熟的 mode 處理流程
+
+        這樣不需要重寫：
+        - baseline
+        - diff
+        - approve
+        - review-all
+        - diff-all
+
+        等既有邏輯。
+        """
+
+        try:
+            content_type = str(
+                self.headers.get(
+                    "Content-Type",
+                    ""
+                )
+                or ""
+            ).lower()
+
+            if (
+                "application/json"
+                not in content_type
+            ):
+                self.send_json(
+                    415,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "POST 請求必須使用 application/json"
+                    }
+                )
+
+                return
+
+            content_length_text = str(
+                self.headers.get(
+                    "Content-Length",
+                    "0"
+                )
+                or "0"
+            ).strip()
+
+            try:
+                content_length = int(
+                    content_length_text
+                )
+
+            except ValueError:
+                content_length = 0
+
+            if content_length <= 0:
+                self.send_json(
+                    400,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "POST Body 不能為空白"
+                    }
+                )
+
+                return
+
+            # 目前最多約 100 部法規，
+            # 1 MB 已遠高於實際需要。
+            if content_length > (
+                1024 *
+                1024
+            ):
+                self.send_json(
+                    413,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "POST Body 超過允許大小"
+                    }
+                )
+
+                return
+
+            raw_body = (
+                self.rfile.read(
+                    content_length
+                )
+            )
+
+            try:
+                payload = json.loads(
+                    raw_body.decode(
+                        "utf-8"
+                    )
+                )
+
+            except (
+                UnicodeDecodeError,
+                json.JSONDecodeError
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "POST JSON 格式錯誤"
+                    }
+                )
+
+                return
+
+            if not isinstance(
+                payload,
+                dict
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "POST JSON 最外層必須為物件"
+                    }
+                )
+
+                return
+
+            mode = str(
+                payload.get(
+                    "mode",
+                    ""
+                )
+                or ""
+            ).strip().lower()
+
+            # 只有真正寫入型 API
+            # 可以使用 POST。
+            allowed_post_modes = {
+                "baseline",
+                "baseline-all",
+                "diff",
+                "diff-all",
+                "approve",
+                "review-all"
+            }
+
+            if mode not in (
+                allowed_post_modes
+            ):
+                self.send_json(
+                    405,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "此 API 不接受 POST"
+                    }
+                )
+
+                return
+
+            # -------------------------------------------------
+            # 將 JSON Body 暫時轉成
+            # parse_qs 相同的：
+            #
+            # {
+            #   "mode": ["diff-all"],
+            #   "laws": ["[...]"]
+            # }
+            #
+            # 供既有成熟 mode 邏輯共用。
+            # -------------------------------------------------
+
+            post_query = {}
+
+            for (
+                key,
+                value
+            ) in payload.items():
+
+                normalized_key = str(
+                    key or ""
+                ).strip()
+
+                if not normalized_key:
+                    continue
+
+                if isinstance(
+                    value,
+                    (
+                        list,
+                        dict
+                    )
+                ):
+                    normalized_value = (
+                        json.dumps(
+                            value,
+                            ensure_ascii=False
+                        )
+                    )
+
+                elif value is None:
+                    normalized_value = ""
+
+                elif isinstance(
+                    value,
+                    bool
+                ):
+                    normalized_value = (
+                        "true"
+                        if value
+                        else "false"
+                    )
+
+                else:
+                    normalized_value = str(
+                        value
+                    )
+
+                post_query[
+                    normalized_key
+                ] = [
+                    normalized_value
+                ]
+
+            self._post_query = (
+                post_query
+            )
+
+            self._request_method = (
+                "POST"
+            )
+
+            # 共用既有完整處理流程。
+            self.do_GET()
+
+        except Exception as exc:
+            self.send_json(
+                500,
+                {
+                    "success":
+                        False,
+
+                    "error":
+                        str(exc)
+                }
+            )
+
+        finally:
+            if hasattr(
+                self,
+                "_post_query"
+            ):
+                delattr(
+                    self,
+                    "_post_query"
+                )
+
+            if hasattr(
+                self,
+                "_request_method"
+            ):
+                delattr(
+                    self,
+                    "_request_method"
+                )
+
     def do_GET(self):
 
         started_at = time.time()
 
         try:
-            parsed_url = urlparse(
-                self.path
+            # -------------------------------------------------
+            # 正常 GET：
+            # → 從 URL Query String 取得資料。
+            #
+            # POST：
+            # → do_POST 已解析 JSON Body，
+            #   暫存於 _post_query。
+            # -------------------------------------------------
+
+            post_query = getattr(
+                self,
+                "_post_query",
+                None
             )
 
-            query = parse_qs(
-                parsed_url.query
-            )
+            if isinstance(
+                post_query,
+                dict
+            ):
+                query = post_query
+
+                request_method = (
+                    "POST"
+                )
+
+            else:
+                parsed_url = urlparse(
+                    self.path
+                )
+
+                query = parse_qs(
+                    parsed_url.query
+                )
+
+                request_method = (
+                    "GET"
+                )
 
             mode = str(
                 query.get(
@@ -5194,6 +5508,36 @@ class handler(BaseHTTPRequestHandler):
             )
 
             if required_roles is not None:
+
+                # ---------------------------------------------
+                # 所有 protected / 寫入型 mode
+                # 一律禁止外部 GET。
+                #
+                # 即使有合法 Session，
+                # 網址列也不能執行寫入操作。
+                # ---------------------------------------------
+
+                if (
+                    request_method !=
+                    "POST"
+                ):
+                    self.send_json(
+                        405,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "METHOD_NOT_ALLOWED",
+
+                            "message":
+                                (
+                                    "此操作僅允許使用 POST"
+                                )
+                        }
+                    )
+
+                    return
 
                 access_session = (
                     self.require_osai_roles(
