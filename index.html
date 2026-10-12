@@ -5432,6 +5432,22 @@ const monitorScrollPositionRef = useRef(0);
             const [isSyncing, setIsSyncing] = useState(false);
             const [syncText, setSyncText] = useState('正在執行鑑別程序...');
             const [selectedLaw, setSelectedLaw] = useState(null);
+
+/*
+ * 記錄目前鑑別工作台實際載入的
+ * Pending 版本。
+ *
+ * 完成鑑別時會將此 Hash
+ * 一併送到後端驗證，
+ * 避免確認到另一台電腦後來更新的新版本。
+ */
+const viewedPendingRef =
+    useRef({
+        pcode: '',
+        hash: '',
+        state: ''
+    });
+
 const [searchQuery, setSearchQuery] = useState('');
 const [filterType, setFilterType] = useState('全部');
 const [currentTime, setCurrentTime] = useState(new Date());
@@ -17832,7 +17848,7 @@ const failedNames = syncData
     }
 };
 
-const handleSingleSync = (
+const handleSingleSync = async (
     lawId,
     options = {}
 ) => {
@@ -17866,14 +17882,120 @@ const handleSingleSync = (
         .trim()
         .toUpperCase();
 
-    if (!pcode) {
-        alert(
-            '此法規缺少 PCode，無法完成鑑別。'
+/*
+ * 監控清單完成鑑別前，
+ * 記錄剛才中央確認到的 Pending 狀態。
+ *
+ * 目前監控清單只有在確認「沒有 Pending」
+ * 時才會繼續，因此成功通過檢查後會是 none。
+ */
+let confirmedPendingState = '';
+
+if (!pcode) {
+    alert(
+        '此法規缺少 PCode，無法完成鑑別。'
+    );
+    return;
+}
+
+/*
+ * 監控清單直接按下「完成鑑別」時，
+ * 先確認中央是否存在等待人工確認的 Pending。
+ *
+ * 若已有 Pending：
+ * 必須先進入「比對詳情」實際閱讀條文，
+ * 再由鑑別工作台完成鑑別。
+ *
+ * 鑑別工作台本身不執行此檢查，
+ * 因為該流程已經使用 expected_pending_hash
+ * 鎖定使用者實際看到的版本。
+ */
+if (!returnToMonitor) {
+
+    try {
+        const pendingResponse =
+            await fetch(
+                `/api/sync-laws?mode=pending` +
+                `&pcode=${encodeURIComponent(pcode)}` +
+                `&_=${Date.now()}`,
+                {
+                    method: 'GET',
+                    cache: 'no-store',
+                    headers: {
+                        'Accept':
+                            'application/json',
+
+                        'Cache-Control':
+                            'no-cache',
+
+                        'Pragma':
+                            'no-cache'
+                    }
+                }
+            );
+
+        const pendingText =
+            await pendingResponse.text();
+
+        let pendingResult;
+
+        try {
+            pendingResult =
+                JSON.parse(
+                    pendingText
+                );
+
+        } catch (parseError) {
+            throw new Error(
+                `中央 Pending 狀態格式錯誤。HTTP ${pendingResponse.status}`
+            );
+        }
+
+        if (
+            !pendingResponse.ok ||
+            pendingResult?.success !== true
+        ) {
+            throw new Error(
+                pendingResult?.error ||
+                `中央 Pending 狀態讀取失敗：HTTP ${pendingResponse.status}`
+            );
+        }
+
+        if (
+            pendingResult.hasPending === true
+        ) {
+            alert(
+                '此法規目前有待確認的官方條文異動。\n\n' +
+                '請先點選「比對詳情」，確認新舊條文後，' +
+                '再於鑑別工作台按下「完成鑑別」。'
+            );
+
+            return;
+        }
+
+/*
+ * 能執行到這裡，
+ * 代表剛才中央已確認目前沒有 Pending。
+ */
+confirmedPendingState = 'none';
+
+    } catch (error) {
+        console.error(
+            '完成鑑別前 Pending 狀態確認失敗：',
+            error
         );
+
+        alert(
+            '目前無法確認中央法規異動狀態。\n\n' +
+            '為避免誤將尚未確認的條文完成鑑別，' +
+            '本次不執行完成鑑別，請稍後再試。'
+        );
+
         return;
     }
+}
 
-    const unsavedNotice =
+const unsavedNotice =
         returnToMonitor &&
         workbenchManualDirtyRef.current
             ? '\n\n注意：鑑別工作台目前仍有尚未儲存的修改。' +
@@ -17896,11 +18018,61 @@ const handleSingleSync = (
 
     setIsSyncing(true);
 
-    setTimeout(async () => {
-        const today =
-            getTodayDateString();
+setTimeout(async () => {
+    const today =
+        getTodayDateString();
 
-        try {
+    /*
+     * 只有從鑑別工作台按下「完成鑑別」時，
+     * 才使用剛才實際看到的 Pending Hash。
+     *
+     * 監控清單原本的完成鑑別流程
+     * 維持既有行為。
+     */
+    const expectedPendingHash =
+        (
+            returnToMonitor &&
+            viewedPendingRef.current.pcode ===
+                pcode
+        )
+            ? String(
+                viewedPendingRef.current.hash ||
+                ''
+            ).trim()
+            : '';
+
+const expectedPendingState =
+    returnToMonitor
+        ? (
+            viewedPendingRef.current.pcode ===
+                pcode
+                ? String(
+                    viewedPendingRef.current.state ||
+                    ''
+                )
+                    .trim()
+                    .toLowerCase()
+                : ''
+        )
+        : confirmedPendingState;
+
+const expectedPendingHashQuery =
+    expectedPendingHash
+        ? (
+            `&expected_pending_hash=` +
+            `${encodeURIComponent(expectedPendingHash)}`
+        )
+        : '';
+
+const expectedPendingStateQuery =
+    expectedPendingState
+        ? (
+            `&expected_pending_state=` +
+            `${encodeURIComponent(expectedPendingState)}`
+        )
+        : '';
+
+try {
             /*
              * 若此法規目前存在 pending_review，
              * 先將 Pending 正式升格為新 Baseline。
@@ -17912,10 +18084,12 @@ const handleSingleSync = (
              */
 const approveResponse =
     await fetch(
-        `/api/sync-laws?mode=approve` +
-        `&pcode=${encodeURIComponent(pcode)}` +
-        `&review_date=${encodeURIComponent(today)}` +
-        `&_=${Date.now()}`,
+`/api/sync-laws?mode=approve` +
+`&pcode=${encodeURIComponent(pcode)}` +
+`&review_date=${encodeURIComponent(today)}` +
+expectedPendingHashQuery +
+expectedPendingStateQuery +
+`&_=${Date.now()}`,
                     {
                         method: 'GET',
                         cache: 'no-store',
@@ -17995,12 +18169,18 @@ const approveResponse =
                     : prev
             );
 
-            if (returnToMonitor) {
-                setIsWorkbenchEditMode(false);
-                setActiveTab('monitor');
-            }
+if (returnToMonitor) {
+viewedPendingRef.current = {
+    pcode: '',
+    hash: '',
+    state: ''
+};
 
-            alert(
+    setIsWorkbenchEditMode(false);
+    setActiveTab('monitor');
+}
+
+alert(
                 `鑑別完成！最近鑑別/登錄日已更新為 ${today}。`
             );
 
@@ -18456,10 +18636,20 @@ const startSync = async (law) => {
         `正在連線資料庫讀取《${law.name}》最新條文.`
     );
 
-    setIsSyncing(true);
+setIsSyncing(true);
 
-    /*
-     * 保留原本至少約 1.5 秒的讀取體感，
+/*
+ * 每次重新讀取比對詳情時，
+ * 先清除上一部法規／上一版本的 Pending Hash。
+ */
+viewedPendingRef.current = {
+    pcode: '',
+    hash: '',
+    state: ''
+};
+
+/*
+ * 保留原本至少約 1.5 秒的讀取體感，
      * 不改變既有 Loading 畫面節奏。
      */
     const startedAt =
@@ -18528,6 +18718,31 @@ const startSync = async (law) => {
                 `比對資料讀取失敗：HTTP ${response.status}`
             );
         }
+
+/*
+ * 保存目前工作台實際讀取到的
+ * Pending 版本。
+ *
+ * 沒有 Pending 時 Hash 保持空白，
+ * 不影響原本人工完成鑑別流程。
+ */
+viewedPendingRef.current = {
+    pcode:
+        pcode,
+
+    hash:
+        result.hasPending === true
+            ? String(
+                result.pendingHash ||
+                ''
+            ).trim()
+            : '',
+
+    state:
+        result.hasPending === true
+            ? 'pending'
+            : 'none'
+};
 
         /*
          * 有真正 pending_review 時，
