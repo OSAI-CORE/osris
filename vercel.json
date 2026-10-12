@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/sync-laws.py": {
-      "maxDuration": 60
+      "maxDuration": 180
     }
   }
 }
