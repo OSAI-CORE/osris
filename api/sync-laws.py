@@ -658,6 +658,40 @@ def validate_osai_access_session(
 
     return session
 
+
+# =========================================================
+# Production Error Logging
+# =========================================================
+#
+# 真正技術錯誤：
+# → 只寫入 Vercel Runtime Logs。
+#
+# 前端：
+# → 不直接收到 Exception、Supabase Response Body
+#   或其他後端技術細節。
+# =========================================================
+
+def log_internal_error(
+    context,
+    exc
+):
+    try:
+        print(
+            (
+                "[OSRIS]["
+                f"{str(context or 'unknown')}"
+                "] "
+                f"{type(exc).__name__}: "
+                f"{str(exc)}"
+            )
+        )
+
+    except Exception:
+        # Logging 本身失敗
+        # 不能再影響正式 API。
+        pass
+
+
 def create_session():
     session = requests.Session()
 
@@ -1676,34 +1710,75 @@ def get_law_snapshot(pcode):
         }
 
     except requests.RequestException as exc:
+
+        log_internal_error(
+            (
+                "law-snapshot-request:"
+                f"{normalized_pcode}"
+            ),
+            exc
+        )
+
         return {
-            "success": False,
+            "success":
+                False,
+
             "pcode":
                 normalized_pcode,
-            "date": None,
-            "articles": [],
-            "articleCount": 0,
+
+            "date":
+                None,
+
+            "articles":
+                [],
+
+            "articleCount":
+                0,
+
             "sourceUrl":
                 source_url,
+
             "error":
-                (
-                    "取得法規 Snapshot HTTP 請求失敗："
-                    f"{str(exc)}"
-                )
+                "取得官方法規資料失敗，請稍後再試。",
+
+            "errorCode":
+                "OFFICIAL_SOURCE_REQUEST_FAILED"
         }
 
     except Exception as exc:
+
+        log_internal_error(
+            (
+                "law-snapshot:"
+                f"{normalized_pcode}"
+            ),
+            exc
+        )
+
         return {
-            "success": False,
+            "success":
+                False,
+
             "pcode":
                 normalized_pcode,
-            "date": None,
-            "articles": [],
-            "articleCount": 0,
+
+            "date":
+                None,
+
+            "articles":
+                [],
+
+            "articleCount":
+                0,
+
             "sourceUrl":
                 source_url,
+
             "error":
-                str(exc)
+                "官方法規資料處理失敗，請稍後再試。",
+
+            "errorCode":
+                "OFFICIAL_SOURCE_PROCESS_FAILED"
         }
 
     finally:
@@ -4574,6 +4649,15 @@ def initialize_one_regulation_baseline(law):
         }
 
     except Exception as exc:
+
+        log_internal_error(
+            (
+                "baseline-init:"
+                f"{pcode or 'unknown'}"
+            ),
+            exc
+        )
+
         return {
             "Pcode":
                 pcode,
@@ -4594,7 +4678,10 @@ def initialize_one_regulation_baseline(law):
                 0,
 
             "Error":
-                str(exc)
+                "新法規中央 Baseline 建立失敗，請稍後再試。",
+
+            "ErrorCode":
+                "BASELINE_INIT_FAILED"
         }
 
 def analyze_one_regulation_batch(law):
@@ -4821,6 +4908,15 @@ def analyze_one_regulation_batch(law):
         }
 
     except Exception as exc:
+
+        log_internal_error(
+            (
+                "diff-item:"
+                f"{pcode or 'unknown'}"
+            ),
+            exc
+        )
+
         return {
             "Pcode":
                 pcode,
@@ -4847,7 +4943,10 @@ def analyze_one_regulation_batch(law):
                 0,
 
             "Error":
-                str(exc)
+                "此法規智能同步暫時失敗，請稍後再試。",
+
+            "ErrorCode":
+                "REGULATION_SYNC_FAILED"
         }
 
 def fetch_one_law(law):
@@ -5436,6 +5535,12 @@ class handler(BaseHTTPRequestHandler):
             self.do_GET()
 
         except Exception as exc:
+
+            log_internal_error(
+                "api-post",
+                exc
+            )
+
             self.send_json(
                 500,
                 {
@@ -5443,7 +5548,10 @@ class handler(BaseHTTPRequestHandler):
                         False,
 
                     "error":
-                        str(exc)
+                        "系統暫時無法處理此操作，請稍後再試。",
+
+                    "errorCode":
+                        "POST_INTERNAL_ERROR"
                 }
             )
 
@@ -6012,6 +6120,15 @@ class handler(BaseHTTPRequestHandler):
                     )
 
                 except Exception as exc:
+
+                    log_internal_error(
+                        (
+                            "approve:"
+                            f"{pcode or 'unknown'}"
+                        ),
+                        exc
+                    )
+
                     self.send_json(
                         500,
                         {
@@ -6025,7 +6142,10 @@ class handler(BaseHTTPRequestHandler):
                                 False,
 
                             "error":
-                                str(exc)
+                                "完成鑑別暫時失敗，請稍後再試。",
+
+                            "errorCode":
+                                "APPROVE_INTERNAL_ERROR"
                         }
                     )
 
@@ -6044,6 +6164,12 @@ class handler(BaseHTTPRequestHandler):
                     )
 
                 except Exception as exc:
+
+                    log_internal_error(
+                        "state-list",
+                        exc
+                    )
+
                     self.send_json(
                         500,
                         {
@@ -6057,7 +6183,10 @@ class handler(BaseHTTPRequestHandler):
                                 [],
 
                             "error":
-                                str(exc)
+                                "中央法規狀態暫時無法讀取，請稍後再試。",
+
+                            "errorCode":
+                                "STATE_LIST_UNAVAILABLE"
                         }
                     )
 
@@ -6172,6 +6301,12 @@ class handler(BaseHTTPRequestHandler):
                     )
 
                 except Exception as exc:
+
+                    log_internal_error(
+                        "review-all",
+                        exc
+                    )
+
                     self.send_json(
                         500,
                         {
@@ -6185,7 +6320,10 @@ class handler(BaseHTTPRequestHandler):
                                 review_date,
 
                             "error":
-                                str(exc)
+                                "同步鑑別暫時失敗，請稍後再試。",
+
+                            "errorCode":
+                                "REVIEW_ALL_INTERNAL_ERROR"
                         }
                     )
 
@@ -6270,6 +6408,15 @@ class handler(BaseHTTPRequestHandler):
                     )
 
                 except Exception as exc:
+
+                    log_internal_error(
+                        (
+                            "pending:"
+                            f"{pcode or 'unknown'}"
+                        ),
+                        exc
+                    )
+
                     self.send_json(
                         500,
                         {
@@ -6283,7 +6430,10 @@ class handler(BaseHTTPRequestHandler):
                                 False,
 
                             "error":
-                                str(exc)
+                                "法規比對資料暫時無法讀取，請稍後再試。",
+
+                            "errorCode":
+                                "PENDING_UNAVAILABLE"
                         }
                     )
 
@@ -6795,16 +6945,29 @@ class handler(BaseHTTPRequestHandler):
                             )
 
                         except Exception as exc:
+
+                            failed_pcode = (
+                                str(
+                                    source_law.get(
+                                        "pcode",
+                                        ""
+                                    )
+                                )
+                                .strip()
+                                .upper()
+                            )
+
+                            log_internal_error(
+                                (
+                                    "diff-worker:"
+                                    f"{failed_pcode or 'unknown'}"
+                                ),
+                                exc
+                            )
+
                             result = {
                                 "Pcode":
-                                    str(
-                                        source_law.get(
-                                            "pcode",
-                                            ""
-                                        )
-                                    )
-                                    .strip()
-                                    .upper(),
+                                    failed_pcode,
 
                                 "Name":
                                     source_law.get(
@@ -6831,7 +6994,10 @@ class handler(BaseHTTPRequestHandler):
                                     0,
 
                                 "Error":
-                                    str(exc)
+                                    "此法規智能同步暫時失敗，請稍後再試。",
+
+                                "ErrorCode":
+                                    "DIFF_WORKER_FAILED"
                             }
 
                         diff_results.append(
@@ -7000,15 +7166,37 @@ class handler(BaseHTTPRequestHandler):
             return
 
         except Exception as exc:
+
+            log_internal_error(
+                "api-handler",
+                exc
+            )
+
             self.send_json(
                 500,
                 {
-                    "success": False,
-                    "count": 0,
-                    "successCount": 0,
-                    "failedCount": 0,
-                    "error": str(exc),
-                    "data": [],
-                    "failedItems": []
+                    "success":
+                        False,
+
+                    "count":
+                        0,
+
+                    "successCount":
+                        0,
+
+                    "failedCount":
+                        0,
+
+                    "error":
+                        "系統服務暫時發生錯誤，請稍後再試。",
+
+                    "errorCode":
+                        "API_INTERNAL_ERROR",
+
+                    "data":
+                        [],
+
+                    "failedItems":
+                        []
                 }
             )
