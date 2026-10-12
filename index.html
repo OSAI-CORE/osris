@@ -1438,11 +1438,11 @@ header .mobile-hide.sm\:block {
         box-shadow: 0 4px 12px rgb(15 23 42 / 0.06);
     }
 
-    .mobile-compare-content {
-        max-height: none !important;
-        overflow: visible !important;
-        white-space: normal !important;
-        word-break: break-word;
+.mobile-compare-content {
+    max-height: none !important;
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    word-break: break-word;
         overflow-wrap: anywhere;
         line-height: 1.7;
     }
@@ -6368,6 +6368,144 @@ const getCurrentRole = () => {
     return 'viewer';
 };
 
+/*
+ * =========================================================
+ * Regulation API Protected Request
+ * =========================================================
+ *
+ * 所有會修改中央法規狀態的 API，
+ * 一律帶入目前 OSAI Core Session。
+ *
+ * Token：
+ * - 只存在目前頁面記憶體
+ * - 不寫 JSON
+ * - 不寫 IndexedDB
+ * - 不寫 Local / Session Storage
+ */
+const buildRegulationProtectedApiHeaders =
+    () => {
+
+    const currentRole =
+        getCurrentRole();
+
+    if (
+        !hasValidOsaiSystemAccessSession() ||
+        ![
+            'admin',
+            'editor'
+        ].includes(
+            currentRole
+        ) ||
+        osaiSystemAccessSession.role !==
+            currentRole
+    ) {
+        clearOsaiSystemAccessSession();
+
+        setIsAdmin(false);
+        setIsEditor(false);
+
+        setIsMonitorEditMode(false);
+        setIsWorkbenchEditMode(false);
+
+        setShowLoginModal(true);
+
+        showSystemToast(
+            '權限驗證工作階段已失效，請重新登入。',
+            'error'
+        );
+
+        throw new Error(
+            '權限驗證工作階段已失效，請重新登入。'
+        );
+    }
+
+    return {
+        'Accept':
+            'application/json',
+
+        'Authorization':
+            `Bearer ${
+                osaiSystemAccessSession.token
+            }`,
+
+        'Cache-Control':
+            'no-cache',
+
+        'Pragma':
+            'no-cache'
+    };
+};
+
+
+/*
+ * 後端若判定 Session 已失效，
+ * 前端立即退回 Viewer，
+ * 不允許畫面仍假裝是 Admin / Editor。
+ */
+const handleRegulationApiAuthFailure =
+    (
+        response,
+        result
+    ) => {
+
+    const code =
+        String(
+            result?.error || ''
+        ).trim();
+
+    const sessionInvalidCodes =
+        new Set([
+            'SYSTEM_SESSION_INVALID',
+            'SYSTEM_SESSION_EXPIRED',
+            'SYSTEM_SESSION_MISMATCH',
+            'EDITOR_DISABLED',
+            'ADMIN_LOGIN_REQUIRED'
+        ]);
+
+    if (
+        response?.status === 401 ||
+        sessionInvalidCodes.has(
+            code
+        )
+    ) {
+        clearOsaiSystemAccessSession();
+
+        setIsAdmin(false);
+        setIsEditor(false);
+
+        setIsMonitorEditMode(false);
+        setIsWorkbenchEditMode(false);
+
+        setShowLoginModal(true);
+
+        showSystemToast(
+            '權限驗證工作階段已失效，請重新登入。',
+            'error'
+        );
+
+        return true;
+    }
+
+    if (
+        response?.status === 403 &&
+        (
+            code ===
+                'ADMIN_PERMISSION_REQUIRED' ||
+            code ===
+                'SYSTEM_PERMISSION_REQUIRED'
+        )
+    ) {
+        showSystemToast(
+            '目前登入權限不足，無法執行此操作。',
+            'error'
+        );
+
+        return true;
+    }
+
+    return false;
+};
+
 const canEditData = () => isAdmin || isEditor;
 const canDeleteData = () => isAdmin;
 const canChangePassword = () => isAdmin;
@@ -10646,6 +10784,13 @@ const loadCloudWorkspaceIntoSystem =
             'monitor'
         );
 
+/*
+ * Cloud Workspace 為正式工作資料。
+ *
+ * 載入後以 Supabase 中央法規狀態
+ * 校正 remoteDate / localCheckDate，
+ * 其餘 Workspace 資料維持原內容。
+ */
 const mergedWorkspaceLaws =
     await mergeCentralRegulationStateIntoLaws(
         parsedData.laws
@@ -12940,13 +13085,19 @@ const applyImportedRegulationData = (importedData) => {
  * =========================================================
  *
  * 用途：
- * - 本機 JSON
+ * - 本機正式 JSON
  * - Cloud Workspace
+ *
+ * 不使用於：
+ * - Viewer 本機預覽
  * - Cloud Preview
  *
- * 載入舊資料後，
+ * 正式工作資料載入後，
  * 重新以 Supabase 中央法規狀態
  * 校正最新日期。
+ *
+ * Preview 屬於歷史快照，
+ * 必須保留發布／匯出當時的日期。
  *
  * 只覆蓋：
  * - remoteDate
@@ -13492,13 +13643,15 @@ const submitCloudPreviewViewerOpen =
             'monitor'
         );
 
-const mergedCloudPreviewLaws =
-    await mergeCentralRegulationStateIntoLaws(
-        parsedData.laws
-    );
-
+/*
+ * Cloud Preview 為發布當時的歷史快照。
+ *
+ * 不套用目前 Supabase 中央日期，
+ * 避免之後中央鑑別狀態更新，
+ * 造成已發布的 Preview 畫面內容改變。
+ */
 setLaws(
-    mergedCloudPreviewLaws
+    parsedData.laws
 );
 
 setLawDetails(
@@ -16290,13 +16443,14 @@ const importDatabase = (
                     'monitor'
                 );
 
-const mergedPreviewLaws =
-    await mergeCentralRegulationStateIntoLaws(
-        importedData.laws
-    );
-
+/*
+ * Viewer 預覽資料屬於匯出當時的歷史快照。
+ *
+ * 預覽模式不套用目前中央法規日期，
+ * 確保看到的內容與原始預覽檔一致。
+ */
 setLaws(
-    mergedPreviewLaws
+    importedData.laws
 );
 
 setLawDetails(
@@ -17074,6 +17228,97 @@ const toggleMonitorEditMode = () => {
     );
 };
 
+/*
+ * =========================================================
+ * 建立目前法規監控清單的中央同步資料
+ * =========================================================
+ *
+ * 這裡只整理：
+ * - pcode
+ * - name
+ *
+ * type、排序、lawDetails 等結構資料
+ * 仍完全由目前 JSON / Workspace 負責。
+ */
+const buildCurrentRegulationSyncList =
+    () => {
+
+    if (
+        !Array.isArray(
+            laws
+        ) ||
+        laws.length === 0
+    ) {
+        throw new Error(
+            '目前沒有可同步的法規監控項目。'
+        );
+    }
+
+    const seenPcodes =
+        new Set();
+
+    return laws.map(
+        (
+            law,
+            index
+        ) => {
+
+        const pcode =
+            String(
+                law?.pcode || ''
+            )
+                .trim()
+                .toUpperCase();
+
+        const lawName =
+            String(
+                law?.name || ''
+            )
+                .trim();
+
+        if (
+            !/^[A-Z]\d{7}$/.test(
+                pcode
+            )
+        ) {
+            throw new Error(
+                `第 ${index + 1} 筆法規的 PCode 格式不正確：` +
+                `${pcode || '尚未填寫'}`
+            );
+        }
+
+        if (
+            !lawName ||
+            lawName ===
+                '新法規名稱'
+        ) {
+            throw new Error(
+                `第 ${index + 1} 筆法規尚未填寫正式法規名稱。`
+            );
+        }
+
+        if (
+            seenPcodes.has(
+                pcode
+            )
+        ) {
+            throw new Error(
+                `法規監控清單存在重複 PCode：${pcode}`
+            );
+        }
+
+        seenPcodes.add(
+            pcode
+        );
+
+        return {
+            pcode,
+            name:
+                lawName
+        };
+    });
+};
+
 const saveMonitorEdits =
 async () => {
 
@@ -17090,6 +17335,27 @@ async () => {
             '預覽資料模式不能儲存正式資料。',
             'error'
         );
+        return;
+    }
+
+    /*
+     * 儲存前確認目前法規清單：
+     * - PCode 格式正確
+     * - PCode 不重複
+     * - 法規名稱已填寫
+     */
+    try {
+        buildCurrentRegulationSyncList();
+
+    } catch (error) {
+        alert(
+            '法規監控清單尚未完成。\n\n' +
+            (
+                error?.message ||
+                '請確認法規名稱與 PCode。'
+            )
+        );
+
         return;
     }
 
@@ -17405,10 +17671,33 @@ const newId =
     monitorManualDirtyRef.current =
     true;
 
-    setLaws([...laws, { id: newId, pcode: 'NEW_CODE', name: '新法規名稱', type: '法規命令', remoteDate: '2026-03-01', localCheckDate: '2026-03-01' }]);
+    setLaws(
+    prev => [
+        ...prev,
+        {
+            id:
+                newId,
+
+            pcode:
+                '',
+
+            name:
+                '新法規名稱',
+
+            type:
+                '法規命令',
+
+            remoteDate:
+                '',
+
+            localCheckDate:
+                ''
+        }
+    ]
+);
             };
 
-const removeLaw = (id) => {
+const removeLaw = async (id) => {
     if (!canDeleteLawMonitor()) {
         alert(
             '只有管理者可以刪除法規監測項目。'
@@ -17416,9 +17705,134 @@ const removeLaw = (id) => {
         return;
     }
 
+    const targetLaw =
+        laws.find(
+            law =>
+                law.id === id
+        );
+
+    const targetPcode =
+        String(
+            targetLaw?.pcode || ''
+        )
+            .trim()
+            .toUpperCase();
+
+    /*
+     * 已經有正式 PCode 的法規，
+     * 刪除前必須先確認中央沒有待鑑別 Pending。
+     *
+     * 尚未第一次同步的新空白項目，
+     * 可直接從目前工作階段移除。
+     */
+    if (
+        /^[A-Z]\d{7}$/.test(
+            targetPcode
+        )
+    ) {
+        try {
+            const pendingResponse =
+                await fetch(
+                    `/api/sync-laws?mode=pending` +
+                    `&pcode=${encodeURIComponent(targetPcode)}` +
+                    `&_=${Date.now()}`,
+                    {
+                        method:
+                            'GET',
+
+                        cache:
+                            'no-store',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'Cache-Control':
+                                'no-cache',
+
+                            'Pragma':
+                                'no-cache'
+                        }
+                    }
+                );
+
+            const pendingText =
+                await pendingResponse.text();
+
+            let pendingResult;
+
+            try {
+                pendingResult =
+                    JSON.parse(
+                        pendingText
+                    );
+
+            } catch (error) {
+                throw new Error(
+                    '中央 Pending 狀態格式錯誤'
+                );
+            }
+
+            /*
+             * 尚未建立 Baseline 的新法規：
+             * 代表中央還沒有任何資料，
+             * 可以直接從目前監控清單移除。
+             */
+            const baselineMissing =
+                (
+                    pendingResponse.status ===
+                        404 &&
+                    pendingResult?.status ===
+                        'baseline_missing'
+                );
+
+            if (!baselineMissing) {
+
+                if (
+                    !pendingResponse.ok ||
+                    pendingResult?.success !==
+                        true
+                ) {
+                    throw new Error(
+                        pendingResult?.error ||
+                        '無法確認中央 Pending 狀態'
+                    );
+                }
+
+                if (
+                    pendingResult.hasPending ===
+                        true
+                ) {
+                    alert(
+                        '此法規目前仍有待確認的官方條文異動。\n\n' +
+                        '請先進入「比對詳情」完成鑑別，' +
+                        '再移除此法規監控項目。'
+                    );
+
+                    return;
+                }
+            }
+
+        } catch (error) {
+            console.error(
+                '刪除法規前確認 Pending 失敗：',
+                error
+            );
+
+            alert(
+                '目前無法確認此法規是否仍有待鑑別異動。\n\n' +
+                '為避免遺漏官方法規異動，' +
+                '本次暫不執行刪除，請稍後再試。'
+            );
+
+            return;
+        }
+    }
+
     const confirmed = confirm(
-        '確定要移除此法規監測項目嗎？' +
-        '相關鑑別紀錄也會一併刪除。\n\n' +
+        '確定要移除此法規監測項目嗎？\n\n' +
+        '此法規將從目前監控清單及目前資料檔的鑑別紀錄中移除，' +
+        '既有中央 Baseline 歷史資料不會因此刪除。\n\n' +
         '請記得按下綠色儲存按鈕，確認本次工作階段修改。'
     );
 
@@ -17600,10 +18014,119 @@ const handleAllSync = async () => {
         return;
     }
 
-    setSyncText('智能同步執行中');
-    setIsSyncing(true);
+    /*
+     * 管理者若仍在編輯監控清單，
+     * 必須先按綠色儲存。
+     *
+     * 避免一邊修改 PCode，
+     * 一邊送出尚未確認的監控結構。
+     */
+    if (
+        isAdmin &&
+        hasUnsavedMonitorChanges()
+    ) {
+        alert(
+            '法規監控清單尚有未儲存的修改。\n\n' +
+            '請先按下綠色儲存按鈕，' +
+            '再執行智能同步。'
+        );
 
-    const controller = new AbortController();
+        return;
+    }
+
+    let currentSyncLaws;
+
+    try {
+        currentSyncLaws =
+            buildCurrentRegulationSyncList();
+
+    } catch (error) {
+        alert(
+            '目前無法執行智能同步。\n\n' +
+            (
+                error?.message ||
+                '請確認法規名稱與 PCode。'
+            )
+        );
+
+        return;
+    }
+
+    /*
+     * 將目前真正存在於監控清單的法規
+     * 傳給後端。
+     *
+     * 刪除的法規不會出現在此清單，
+     * 因此自然停止後續智能同步。
+     */
+    const currentSyncLawsQuery =
+        encodeURIComponent(
+            JSON.stringify(
+                currentSyncLaws
+            )
+        );
+
+setSyncText('智能同步執行中');
+setIsSyncing(true);
+
+/*
+ * 將後端各種可能的錯誤格式
+ * 統一轉成可閱讀文字。
+ *
+ * 避免畫面出現：
+ * [object Object]
+ */
+const normalizeSyncErrorText = (
+    value,
+    fallback =
+        '未知錯誤'
+) => {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ''
+    ) {
+        return fallback;
+    }
+
+    if (
+        typeof value ===
+        'string'
+    ) {
+        return value;
+    }
+
+    if (
+        value instanceof Error &&
+        value.message
+    ) {
+        return String(
+            value.message
+        );
+    }
+
+    if (
+        typeof value ===
+            'object' &&
+        typeof value.message ===
+            'string'
+    ) {
+        return value.message;
+    }
+
+    try {
+        return JSON.stringify(
+            value
+        );
+
+    } catch (error) {
+        return String(
+            value
+        );
+    }
+};
+
+const controller = new AbortController();
 
 const timeoutId = setTimeout(() => {
     controller.abort();
@@ -17611,16 +18134,15 @@ const timeoutId = setTimeout(() => {
 
     try {
 const response = await fetch(
-    `/api/sync-laws?mode=diff-all&_=${Date.now()}`,
+    `/api/sync-laws?mode=diff-all` +
+    `&laws=${currentSyncLawsQuery}` +
+    `&_=${Date.now()}`,
             {
                 method: 'GET',
                 signal: controller.signal,
                 cache: 'no-store',
-                headers: {
-                    'Accept': 'application/json',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
-                }
+headers:
+    buildRegulationProtectedApiHeaders()
             }
         );
 
@@ -17637,12 +18159,24 @@ const response = await fetch(
             );
         }
 
-        if (!response.ok) {
-            throw new Error(
-                result.error ||
-                `後端回應錯誤：HTTP ${response.status}`
-            );
+        if (
+            handleRegulationApiAuthFailure(
+                response,
+                result
+            )
+        ) {
+            return;
         }
+
+
+if (!response.ok) {
+    throw new Error(
+        normalizeSyncErrorText(
+            result?.error,
+            `後端回應錯誤：HTTP ${response.status}`
+        )
+    );
+}
 
         const syncData = Array.isArray(result.data)
             ? result.data
@@ -17659,15 +18193,22 @@ const validSyncData = syncData.filter(item => {
     );
 });
 
-        if (validSyncData.length === 0) {
-            const firstError =
-                result.failedItems?.[0]?.Error ||
-                syncData.find(item => item?.Error)?.Error ||
-                result.error ||
-                '後端沒有取得任何有效法規日期';
+if (validSyncData.length === 0) {
+    const firstError =
+        result.failedItems?.[0]?.Error ||
+        syncData.find(
+            item =>
+                item?.Error
+        )?.Error ||
+        result.error;
 
-            throw new Error(firstError);
-        }
+    throw new Error(
+        normalizeSyncErrorText(
+            firstError,
+            '後端沒有取得任何有效法規日期'
+        )
+    );
+}
 
         let updatedCount = 0;
         let unchangedCount = 0;
@@ -17775,12 +18316,25 @@ return {
             )
         );
 
+        const initializedCount =
+            Number(
+                result.initializedCount ??
+                0
+            );
+
         let message =
             `智能同步完成。\n\n` +
             `監測法規：${result.count || syncData.length} 筆\n` +
             `成功取得：${successCount} 筆\n` +
             `日期更新：${updatedCount} 筆\n` +
             `日期相同：${unchangedCount} 筆`;
+
+        if (
+            initializedCount > 0
+        ) {
+            message +=
+                `\n新法規建檔：${initializedCount} 筆`;
+        }
 
         if (unmatchedCount > 0) {
             message +=
@@ -17800,9 +18354,11 @@ const failedNames = syncData
                         item.Pcode ||
                         '未知法規';
 
-                    const errorText =
-                        item.Error ||
-                        '未取得日期';
+const errorText =
+    normalizeSyncErrorText(
+        item.Error,
+        '未取得日期'
+    );
 
                     return `${lawName}：${errorText}`;
                 })
@@ -17833,13 +18389,14 @@ const failedNames = syncData
                 error
             );
 
-            alert(
-                '同步失敗：' +
-                (
-                    error.message ||
-                    '未知錯誤'
-                )
-            );
+alert(
+    '同步失敗：' +
+    normalizeSyncErrorText(
+        error?.message ||
+        error,
+        '未知錯誤'
+    )
+);
         }
 
     } finally {
@@ -18093,16 +18650,8 @@ expectedPendingStateQuery +
                     {
                         method: 'GET',
                         cache: 'no-store',
-                        headers: {
-                            'Accept':
-                                'application/json',
-
-                            'Cache-Control':
-                                'no-cache',
-
-                            'Pragma':
-                                'no-cache'
-                        }
+                        headers:
+                            buildRegulationProtectedApiHeaders()
                     }
                 );
 
@@ -18126,6 +18675,16 @@ expectedPendingStateQuery +
                     )
                 );
             }
+
+            if (
+                handleRegulationApiAuthFailure(
+                    approveResponse,
+                    approveResult
+                )
+            ) {
+                return;
+            }
+
 
             if (
                 !approveResponse.ok ||
@@ -18214,12 +18773,59 @@ const handleAdminSyncIdentification =
         return;
     }
 
+    /*
+     * 監控清單有尚未儲存的結構修改時，
+     * 不允許直接同步鑑別。
+     */
+    if (
+        hasUnsavedMonitorChanges()
+    ) {
+        alert(
+            '法規監控清單尚有未儲存的修改。\n\n' +
+            '請先按下綠色儲存按鈕，' +
+            '再執行同步鑑別。'
+        );
+
+        return;
+    }
+
+    let currentReviewLaws;
+
+    try {
+        currentReviewLaws =
+            buildCurrentRegulationSyncList();
+
+    } catch (error) {
+        alert(
+            '目前無法執行同步鑑別。\n\n' +
+            (
+                error?.message ||
+                '請確認法規名稱與 PCode。'
+            )
+        );
+
+        return;
+    }
+
+    const currentReviewPcodes =
+        currentReviewLaws.map(
+            item =>
+                item.pcode
+        );
+
+    const currentReviewPcodesQuery =
+        encodeURIComponent(
+            JSON.stringify(
+                currentReviewPcodes
+            )
+        );
+
     const today =
         getTodayDateString();
 
     const confirmed = confirm(
-        `確定要將所有法規的「最近鑑別/登錄日」` +
-        `同步為今天：${today} 嗎？`
+        `確定要將目前監控的 ${currentReviewPcodes.length} 部法規` +
+        `「最近鑑別/登錄日」同步為今天：${today} 嗎？`
     );
 
     if (!confirmed) {
@@ -18243,20 +18849,13 @@ const handleAdminSyncIdentification =
             await fetch(
                 `/api/sync-laws?mode=review-all` +
                 `&review_date=${encodeURIComponent(today)}` +
+                `&pcodes=${currentReviewPcodesQuery}` +
                 `&_=${Date.now()}`,
                 {
                     method: 'GET',
                     cache: 'no-store',
-                    headers: {
-                        'Accept':
-                            'application/json',
-
-                        'Cache-Control':
-                            'no-cache',
-
-                        'Pragma':
-                            'no-cache'
-                    }
+                    headers:
+                        buildRegulationProtectedApiHeaders()
                 }
             );
 
@@ -18282,14 +18881,142 @@ const handleAdminSyncIdentification =
         }
 
         if (
-            !reviewResponse.ok ||
-            reviewResult?.success !== true
+            handleRegulationApiAuthFailure(
+                reviewResponse,
+                reviewResult
+            )
         ) {
-            throw new Error(
-                reviewResult?.error ||
-                `中央鑑別日期同步失敗：HTTP ${reviewResponse.status}`
-            );
+            return;
         }
+
+
+/*
+ * 中央目前仍有待人工鑑別的 Pending 時，
+ * 不視為系統故障。
+ *
+ * 後端已保證：
+ * 只要有一部 Pending，
+ * 本次同步鑑別就完全不更新任何法規日期。
+ */
+if (
+    reviewResponse.status === 409 &&
+    reviewResult?.status ===
+        'pending_exists'
+) {
+    const pendingCount =
+        Number(
+            reviewResult.pendingCount
+        ) || 0;
+
+    const pendingPcodes =
+        Array.isArray(
+            reviewResult.pendingPcodes
+        )
+            ? reviewResult.pendingPcodes
+                .map(
+                    item =>
+                        String(
+                            item || ''
+                        ).trim()
+                )
+                .filter(Boolean)
+            : [];
+
+    let pendingMessage =
+        '目前尚有法規異動等待完成鑑別。\n\n' +
+        `待鑑別法規：${pendingCount} 部\n\n` +
+        '請先完成待鑑別法規的「比對詳情 → 完成鑑別」，' +
+        '再執行同步鑑別。\n\n' +
+        '本次尚未更新任何法規的最近鑑別／登錄日。';
+
+    if (
+        pendingPcodes.length > 0
+    ) {
+        pendingMessage +=
+            '\n\n待鑑別 PCode：\n' +
+            pendingPcodes.join(
+                '\n'
+            );
+    }
+
+    alert(
+        pendingMessage
+    );
+
+    return;
+}
+
+/*
+ * 新增法規尚未執行第一次智能同步。
+ *
+ * 不能直接將它標示成今日已鑑別。
+ */
+if (
+    reviewResponse.status === 409 &&
+    reviewResult?.status ===
+        'baseline_missing'
+) {
+    const missingPcodes =
+        Array.isArray(
+            reviewResult.missingPcodes
+        )
+            ? reviewResult.missingPcodes
+            : [];
+
+    let message =
+        '目前有新增法規尚未建立中央 Baseline。\n\n' +
+        '請先執行「智能同步」，' +
+        '完成新法規第一次官方建檔後，' +
+        '再執行同步鑑別。';
+
+    if (
+        missingPcodes.length > 0
+    ) {
+        message +=
+            '\n\n尚未建檔 PCode：\n' +
+            missingPcodes.join(
+                '\n'
+            );
+    }
+
+    alert(
+        message
+    );
+
+    return;
+}
+
+/*
+ * 同步期間中央狀態突然改變，
+ * 不更新前端本機日期。
+ */
+if (
+    reviewResponse.status === 409 &&
+    reviewResult?.status ===
+        'state_changed'
+) {
+    alert(
+        '同步鑑別期間中央法規狀態已變更。\n\n' +
+        '本次未更新目前畫面的鑑別日期，' +
+        '請重新整理系統後再執行一次。'
+    );
+
+    return;
+}
+
+if (
+    !reviewResponse.ok ||
+    reviewResult?.success !== true
+) {
+    throw new Error(
+        typeof reviewResult?.error ===
+            'string'
+            ? reviewResult.error
+            : (
+                `中央鑑別日期同步失敗：HTTP ${reviewResponse.status}`
+            )
+    );
+}
 
         /*
          * 中央資料確認成功後，
@@ -18319,7 +19046,9 @@ const handleAdminSyncIdentification =
         );
 
         alert(
-            `同步鑑別完成！所有法規的最近鑑別/登錄日已更新為 ${today}。`
+            `同步鑑別完成！目前監控的 ` +
+            `${currentReviewPcodes.length} 部法規` +
+            `最近鑑別/登錄日已更新為 ${today}。`
         );
 
     } catch (error) {
@@ -18800,8 +19529,17 @@ viewedPendingRef.current = {
                                         ''
                                     ),
 
+                                /*
+                                 * 後端新版：
+                                 * newHtml 為自動紅綠差異版本。
+                                 *
+                                 * 舊版後端沒有 newHtml 時，
+                                 * 自動退回原本 new，
+                                 * 保留向下相容。
+                                 */
                                 new:
                                     String(
+                                        item?.newHtml ??
                                         item?.new ??
                                         ''
                                     ),
@@ -26028,9 +26766,9 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
                     舊版條文
                 </div>
 
-                <div className="text-slate-500 text-sm bg-slate-50 p-3 rounded-lg border-l-4 border-slate-200">
-                    {row.old}
-                </div>
+<div className="text-slate-500 text-sm bg-slate-50 p-3 rounded-lg border-l-4 border-slate-200 whitespace-pre-wrap">
+    {row.old}
+</div>
             </div>
 
             <div>
@@ -26038,10 +26776,10 @@ className={`workbench-action-btn workbench-equal-action-btn font-black shadow-xl
                     新版條文
                 </div>
 
-                <div
-                    className="text-slate-800 text-sm font-medium p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50/30"
-                    dangerouslySetInnerHTML={{ __html: row.new }}
-                ></div>
+<div
+    className="text-slate-800 text-sm font-medium p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50/30 whitespace-pre-wrap"
+    dangerouslySetInnerHTML={{ __html: row.new }}
+></div>
             </div>
 
         </div>
