@@ -2205,7 +2205,10 @@ def update_regulation_review_date(
         headers=headers,
         params={
             "pcode":
-                f"eq.{normalized_pcode}"
+                f"eq.{normalized_pcode}",
+
+            "status":
+                "eq.baseline_ready"
         },
         json={
             "last_reviewed_date":
@@ -2244,8 +2247,14 @@ def update_regulation_review_date(
             "pcode":
                 normalized_pcode,
 
+            "status":
+                "pending_changed",
+
             "error":
-                "找不到此法規的中央 Baseline"
+                (
+                    "法規狀態在完成鑑別期間已變更，"
+                    "請重新載入比對詳情後再完成鑑別"
+                )
         }
 
     return {
@@ -2824,7 +2833,9 @@ def get_regulation_pending_for_approval(pcode):
     return None
 
 def promote_regulation_pending_to_baseline(
-    pcode
+    pcode,
+    expected_pending_hash=None,
+    expected_pending_state=None
 ):
     """
     將人工確認完成的 Pending
@@ -2907,19 +2918,99 @@ def promote_regulation_pending_to_baseline(
         ) or ""
     ).strip()
 
+    expected_hash = str(
+        expected_pending_hash or ""
+    ).strip()
+
+    expected_state = str(
+        expected_pending_state or ""
+    ).strip().lower()
+
+    current_has_pending = (
+        current_status == "pending_review" and
+        bool(
+            pending_date
+        ) and
+        isinstance(
+            pending_articles,
+            list
+        ) and
+        bool(
+            pending_articles
+        ) and
+        bool(
+            pending_hash
+        )
+    )
+
+    # ---------------------------------------------------------
+    # 鎖定使用者實際看到的 Pending 狀態
+    #
+    # expected_state = "pending"
+    # → 使用者看到 Pending，必須確認 Hash 相同。
+    #
+    # expected_state = "none"
+    # → 使用者看到沒有 Pending，
+    #   此時若中央突然出現 Pending，也必須阻止。
+    #
+    # expected_state 未傳入：
+    # → 保留舊版 expected_pending_hash 相容行為。
+    # ---------------------------------------------------------
+
+    pending_expectation_changed = False
+
+    if expected_state == "none":
+
+        pending_expectation_changed = (
+            current_has_pending
+        )
+
+    elif expected_state == "pending":
+
+        pending_expectation_changed = (
+            not expected_hash or
+            not current_has_pending or
+            pending_hash != expected_hash
+        )
+
+    elif expected_hash:
+
+        # 向下相容舊版前端。
+        pending_expectation_changed = (
+            not current_has_pending or
+            pending_hash != expected_hash
+        )
+
+    if pending_expectation_changed:
+        return {
+            "success":
+                False,
+
+            "pcode":
+                normalized_pcode,
+
+            "lawName":
+                pending.get(
+                    "law_name"
+                ),
+
+            "promoted":
+                False,
+
+            "status":
+                "pending_changed",
+
+            "error":
+                (
+                    "鑑別工作台所檢視的法規狀態已變更，"
+                    "請重新載入比對詳情後再完成鑑別"
+                )
+        }
+
     # 沒有 Pending 時採冪等處理：
     # 重複按完成鑑別也不會破壞 Baseline。
 
-    if (
-        current_status != "pending_review" or
-        not pending_date or
-        not isinstance(
-            pending_articles,
-            list
-        ) or
-        not pending_articles or
-        not pending_hash
-    ):
+    if not current_has_pending:
         return {
             "success":
                 True,
@@ -3836,6 +3927,44 @@ class handler(BaseHTTPRequestHandler):
                     )[0]
                 ).strip()
 
+                expected_pending_hash = str(
+                    query.get(
+                        "expected_pending_hash",
+                        [""]
+                    )[0]
+                ).strip()
+
+                expected_pending_state = str(
+                    query.get(
+                        "expected_pending_state",
+                        [""]
+                    )[0]
+                ).strip().lower()
+
+                if expected_pending_state not in (
+                    "",
+                    "pending",
+                    "none"
+                ):
+                    self.send_json(
+                        400,
+                        {
+                            "success":
+                                False,
+
+                            "pcode":
+                                pcode,
+
+                            "error":
+                                (
+                                    "expected_pending_state "
+                                    "必須為 pending 或 none"
+                                )
+                        }
+                    )
+
+                    return
+
                 review_date = None
 
                 if review_date_raw:
@@ -3882,7 +4011,9 @@ class handler(BaseHTTPRequestHandler):
                 try:
                     result = (
                         promote_regulation_pending_to_baseline(
-                            pcode
+                            pcode,
+                            expected_pending_hash or None,
+                            expected_pending_state or None
                         )
                     )
 
@@ -3919,7 +4050,13 @@ class handler(BaseHTTPRequestHandler):
                                     ),
 
                                 "status":
-                                    "review_date_failed",
+                                    (
+                                        "pending_changed"
+                                        if review_result.get(
+                                            "status"
+                                        ) == "pending_changed"
+                                        else "review_date_failed"
+                                    ),
 
                                 "error":
                                     review_result.get(
