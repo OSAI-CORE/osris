@@ -8,12 +8,16 @@ import re
 import time
 
 import hashlib
+import base64
+import hmac
 
 import requests
 
 import xml.etree.ElementTree as ET
 
 from html.parser import HTMLParser
+from html import escape as html_escape
+from difflib import SequenceMatcher
 
 from urllib.parse import urlparse, parse_qs
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -46,6 +50,39 @@ REGULATION_BASELINE_TABLE = (
     "osris_regulation_baselines"
 )
 
+# =========================================================
+# OSAI Core 中央權限
+# =========================================================
+#
+# 與 Supabase：
+# osai-system-access
+#
+# 共用相同的 Session HMAC Secret。
+#
+# Secret 僅存在 Vercel Backend Environment，
+# 絕不可傳到前端。
+# =========================================================
+
+OSAI_ACCESS_SESSION_SECRET = (
+    os.getenv(
+        "OSAI_ACCESS_SESSION_SECRET",
+        ""
+    )
+    .strip()
+)
+
+OSAI_ACCESS_SYSTEM_TYPE = (
+    "regulation-identification"
+)
+
+OSAI_ACCESS_CREDENTIALS_TABLE = (
+    "osai_access_credentials"
+)
+
+OSAI_ACCESS_SETTINGS_TABLE = (
+    "osai_system_access_settings"
+)
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -61,6 +98,565 @@ HEADERS = {
     "Pragma": "no-cache"
 }
 
+# =========================================================
+# OSAI Core Session 驗證
+# =========================================================
+
+class RegulationAccessError(
+    Exception
+):
+    def __init__(
+        self,
+        status_code,
+        code
+    ):
+        super().__init__(
+            str(code)
+        )
+
+        self.status_code = int(
+            status_code
+        )
+
+        self.code = str(
+            code
+        )
+
+
+def decode_base64url_bytes(
+    value
+):
+    normalized = str(
+        value or ""
+    ).strip()
+
+    padding = (
+        "=" *
+        (
+            (
+                4 -
+                len(normalized) % 4
+            ) % 4
+        )
+    )
+
+    return (
+        base64.urlsafe_b64decode(
+            (
+                normalized +
+                padding
+            ).encode(
+                "ascii"
+            )
+        )
+    )
+
+
+def verify_osai_session_token(
+    token
+):
+    """
+    驗證 OSAI Core
+    osai-system-access 所簽發的 Session。
+
+    Token 格式：
+    base64url(payload)
+    .
+    HMAC-SHA256(signature)
+    """
+
+    if not OSAI_ACCESS_SESSION_SECRET:
+        raise RuntimeError(
+            "OSAI_ACCESS_SESSION_SECRET_MISSING"
+        )
+
+    normalized_token = str(
+        token or ""
+    ).strip()
+
+    parts = normalized_token.split(
+        "."
+    )
+
+    if len(parts) != 2:
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    payload_part = parts[0]
+    signature_part = parts[1]
+
+    try:
+        actual_signature = (
+            decode_base64url_bytes(
+                signature_part
+            )
+        )
+
+    except Exception:
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    expected_signature = (
+        hmac.new(
+            OSAI_ACCESS_SESSION_SECRET
+                .encode(
+                    "utf-8"
+                ),
+            payload_part.encode(
+                "utf-8"
+            ),
+            hashlib.sha256
+        )
+        .digest()
+    )
+
+    if not hmac.compare_digest(
+        actual_signature,
+        expected_signature
+    ):
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    try:
+        payload = json.loads(
+            decode_base64url_bytes(
+                payload_part
+            ).decode(
+                "utf-8"
+            )
+        )
+
+    except Exception:
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    if not isinstance(
+        payload,
+        dict
+    ):
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    if (
+        int(
+            payload.get(
+                "version"
+            ) or 0
+        ) != 1
+    ):
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    role = str(
+        payload.get(
+            "role"
+        ) or ""
+    ).strip().lower()
+
+    if role not in (
+        "admin",
+        "editor"
+    ):
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    system_type = str(
+        payload.get(
+            "system_type"
+        ) or ""
+    ).strip()
+
+    if (
+        system_type !=
+        OSAI_ACCESS_SYSTEM_TYPE
+    ):
+        raise RegulationAccessError(
+            403,
+            "SYSTEM_SESSION_MISMATCH"
+        )
+
+    try:
+        expires_at = int(
+            payload.get(
+                "exp"
+            ) or 0
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+        expires_at = 0
+
+    # OSAI Core Token 的 exp
+    # 使用 JavaScript Date.now()，
+    # 因此單位為毫秒。
+    now_ms = int(
+        time.time() *
+        1000
+    )
+
+    if expires_at <= now_ms:
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_EXPIRED"
+        )
+
+    try:
+        revision = int(
+            payload.get(
+                "revision"
+            ) or 0
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+        revision = 0
+
+    if revision <= 0:
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    return payload
+
+
+def get_osai_access_credentials_state():
+    """
+    取得中央 Admin / Editor
+    目前正式 revision。
+
+    用途：
+    密碼變更後立即讓舊 Session 失效。
+    """
+
+    if (
+        not REGULATION_SUPABASE_URL or
+        not REGULATION_SUPABASE_SERVICE_ROLE_KEY
+    ):
+        raise RuntimeError(
+            "REGULATION_SUPABASE_CONFIG_MISSING"
+        )
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{OSAI_ACCESS_CREDENTIALS_TABLE}"
+    )
+
+    response = requests.get(
+        url,
+        headers={
+            "apikey":
+                REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+            "Accept":
+                "application/json"
+        },
+        params={
+            "id":
+                "eq.global",
+
+            "select":
+                (
+                    "admin_revision,"
+                    "editor_revision"
+                ),
+
+            "limit":
+                "1"
+        },
+        timeout=(
+            8,
+            20
+        )
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "OSAI_ACCESS_CREDENTIALS_QUERY_FAILED:"
+            f"{response.status_code}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        not isinstance(
+            rows,
+            list
+        ) or
+        len(rows) == 0
+    ):
+        raise RuntimeError(
+            "OSAI_ACCESS_CREDENTIALS_NOT_FOUND"
+        )
+
+    return rows[0]
+
+
+def get_osai_system_access_setting():
+    """
+    取得法規系統目前：
+    - editor_enabled
+    - system_revision
+    """
+
+    url = (
+        f"{REGULATION_SUPABASE_URL}"
+        f"/rest/v1/"
+        f"{OSAI_ACCESS_SETTINGS_TABLE}"
+    )
+
+    response = requests.get(
+        url,
+        headers={
+            "apikey":
+                REGULATION_SUPABASE_SERVICE_ROLE_KEY,
+
+            "Accept":
+                "application/json"
+        },
+        params={
+            "system_type":
+                (
+                    "eq."
+                    f"{OSAI_ACCESS_SYSTEM_TYPE}"
+                ),
+
+            "select":
+                (
+                    "editor_enabled,"
+                    "system_revision"
+                ),
+
+            "limit":
+                "1"
+        },
+        timeout=(
+            8,
+            20
+        )
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            "OSAI_ACCESS_SETTINGS_QUERY_FAILED:"
+            f"{response.status_code}"
+        )
+
+    try:
+        rows = response.json()
+
+    except ValueError:
+        rows = []
+
+    if (
+        not isinstance(
+            rows,
+            list
+        ) or
+        len(rows) == 0
+    ):
+        raise RuntimeError(
+            "OSAI_ACCESS_SETTINGS_NOT_FOUND"
+        )
+
+    return rows[0]
+
+
+def validate_osai_access_session(
+    authorization_header,
+    allowed_roles
+):
+    """
+    驗證：
+    1. Bearer Token
+    2. HMAC Signature
+    3. Token Expiry
+    4. system_type
+    5. Admin / Editor revision
+    6. Editor Enabled / system_revision
+    7. 此 API 所允許角色
+    """
+
+    authorization = str(
+        authorization_header or ""
+    ).strip()
+
+    if not authorization.lower().startswith(
+        "bearer "
+    ):
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    token = authorization[
+        7:
+    ].strip()
+
+    if not token:
+        raise RegulationAccessError(
+            401,
+            "SYSTEM_SESSION_INVALID"
+        )
+
+    session = (
+        verify_osai_session_token(
+            token
+        )
+    )
+
+    role = str(
+        session.get(
+            "role"
+        ) or ""
+    ).strip().lower()
+
+    normalized_allowed_roles = {
+        str(
+            item
+        )
+        .strip()
+        .lower()
+
+        for item in (
+            allowed_roles or []
+        )
+    }
+
+    if (
+        role not in
+        normalized_allowed_roles
+    ):
+        if (
+            normalized_allowed_roles ==
+            {
+                "admin"
+            }
+        ):
+            raise RegulationAccessError(
+                403,
+                "ADMIN_PERMISSION_REQUIRED"
+            )
+
+        raise RegulationAccessError(
+            403,
+            "SYSTEM_PERMISSION_REQUIRED"
+        )
+
+    credentials = (
+        get_osai_access_credentials_state()
+    )
+
+    if role == "admin":
+
+        expected_revision = int(
+            credentials.get(
+                "admin_revision"
+            ) or 0
+        )
+
+        if (
+            int(
+                session.get(
+                    "revision"
+                ) or 0
+            ) !=
+            expected_revision
+        ):
+            raise RegulationAccessError(
+                401,
+                "SYSTEM_SESSION_EXPIRED"
+            )
+
+    elif role == "editor":
+
+        expected_revision = int(
+            credentials.get(
+                "editor_revision"
+            ) or 0
+        )
+
+        if (
+            int(
+                session.get(
+                    "revision"
+                ) or 0
+            ) !=
+            expected_revision
+        ):
+            raise RegulationAccessError(
+                401,
+                "SYSTEM_SESSION_EXPIRED"
+            )
+
+        setting = (
+            get_osai_system_access_setting()
+        )
+
+        if (
+            setting.get(
+                "editor_enabled"
+            ) is not True
+        ):
+            raise RegulationAccessError(
+                403,
+                "EDITOR_DISABLED"
+            )
+
+        try:
+            token_system_revision = int(
+                session.get(
+                    "system_revision"
+                ) or 0
+            )
+
+            current_system_revision = int(
+                setting.get(
+                    "system_revision"
+                ) or 0
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+            token_system_revision = 0
+            current_system_revision = -1
+
+        if (
+            token_system_revision <= 0 or
+            token_system_revision !=
+                current_system_revision
+        ):
+            raise RegulationAccessError(
+                401,
+                "SYSTEM_SESSION_EXPIRED"
+            )
+
+    return session
 
 def create_session():
     session = requests.Session()
@@ -1438,6 +2034,105 @@ def regulation_article_sort_key(article_no):
         value
     )
 
+def build_regulation_highlight_html(
+    old_text,
+    new_text
+):
+    """
+    將單一條文的舊版與新版內容，
+    轉換成鑑別工作台原有的紅綠差異格式。
+
+    保留：
+    - 未異動文字
+    - 完整條文內容
+
+    自動加入：
+    <del>刪除文字</del>
+    <ins>新增文字</ins>
+
+    官方文字會先 HTML Escape，
+    避免條文本身的特殊字元
+    被瀏覽器當成 HTML 執行。
+    """
+
+    old_value = str(
+        old_text or ""
+    )
+
+    new_value = str(
+        new_text or ""
+    )
+
+    matcher = SequenceMatcher(
+        None,
+        old_value,
+        new_value,
+        autojunk=False
+    )
+
+    html_parts = []
+
+    for (
+        tag,
+        old_start,
+        old_end,
+        new_start,
+        new_end
+    ) in matcher.get_opcodes():
+
+        old_piece = html_escape(
+            old_value[
+                old_start:
+                old_end
+            ],
+            quote=False
+        )
+
+        new_piece = html_escape(
+            new_value[
+                new_start:
+                new_end
+            ],
+            quote=False
+        )
+
+        if tag == "equal":
+
+            html_parts.append(
+                new_piece
+            )
+
+        elif tag == "replace":
+
+            if old_piece:
+                html_parts.append(
+                    f"<del>{old_piece}</del>"
+                )
+
+            if new_piece:
+                html_parts.append(
+                    f"<ins>{new_piece}</ins>"
+                )
+
+        elif tag == "delete":
+
+            if old_piece:
+                html_parts.append(
+                    f"<del>{old_piece}</del>"
+                )
+
+        elif tag == "insert":
+
+            if new_piece:
+                html_parts.append(
+                    f"<ins>{new_piece}</ins>"
+                )
+
+    return "".join(
+        html_parts
+    )
+
+
 def build_regulation_diff(
     baseline_articles,
     current_articles
@@ -1450,8 +2145,17 @@ def build_regulation_diff(
     removed
     modified
 
-    完全由程式比對，
-    不使用 AI 判斷實際條文差異。
+    同時產生：
+    newHtml
+
+    newHtml：
+    供目前鑑別工作台直接使用，
+    自動以 <del> / <ins>
+    顯示真正刪除與新增的文字。
+
+    原始 old / new 仍完整保留，
+    不影響 Baseline、Pending
+    與後續版本升格。
     """
 
     old_articles = (
@@ -1487,7 +2191,10 @@ def build_regulation_diff(
             ).strip()
 
         for item in old_articles
-        if isinstance(item, dict)
+        if isinstance(
+            item,
+            dict
+        )
     }
 
     new_map = {
@@ -1505,7 +2212,10 @@ def build_regulation_diff(
             ).strip()
 
         for item in new_articles
-        if isinstance(item, dict)
+        if isinstance(
+            item,
+            dict
+        )
     }
 
     changed_rows = []
@@ -1521,7 +2231,9 @@ def build_regulation_diff(
         key=regulation_article_sort_key
     )
 
-    for article_no in ordered_article_numbers:
+    for article_no in (
+        ordered_article_numbers
+    ):
 
         old_text = old_map.get(
             article_no
@@ -1531,10 +2243,20 @@ def build_regulation_diff(
             article_no
         )
 
+        # -----------------------------------------------------
+        # 新增條文
+        # -----------------------------------------------------
+
         if (
             old_text is None and
             new_text is not None
         ):
+
+            safe_new_text = html_escape(
+                new_text,
+                quote=False
+            )
+
             changed_rows.append({
                 "no":
                     article_no,
@@ -1548,16 +2270,33 @@ def build_regulation_diff(
                 "new":
                     new_text,
 
+                "newHtml":
+                    (
+                        f"<ins>"
+                        f"{safe_new_text}"
+                        f"</ins>"
+                    ),
+
                 "note":
                     "新增條文"
             })
 
             continue
 
+        # -----------------------------------------------------
+        # 刪除條文
+        # -----------------------------------------------------
+
         if (
             old_text is not None and
             new_text is None
         ):
+
+            safe_old_text = html_escape(
+                old_text,
+                quote=False
+            )
+
             changed_rows.append({
                 "no":
                     article_no,
@@ -1571,13 +2310,32 @@ def build_regulation_diff(
                 "new":
                     "",
 
+                "newHtml":
+                    (
+                        f"<del>"
+                        f"{safe_old_text}"
+                        f"</del>"
+                    ),
+
                 "note":
                     "刪除條文"
             })
 
             continue
 
+        # -----------------------------------------------------
+        # 修改條文
+        # -----------------------------------------------------
+
         if old_text != new_text:
+
+            highlighted_html = (
+                build_regulation_highlight_html(
+                    old_text,
+                    new_text
+                )
+            )
+
             changed_rows.append({
                 "no":
                     article_no,
@@ -1590,6 +2348,9 @@ def build_regulation_diff(
 
                 "new":
                     new_text,
+
+                "newHtml":
+                    highlighted_html,
 
                 "note":
                     "條文內容修正"
@@ -2272,7 +3033,8 @@ def update_regulation_review_date(
     }
 
 def update_all_regulation_review_dates(
-    review_date
+    review_date,
+    monitored_pcodes=None
 ):
     """
     將目前法規 Baseline 表內所有法規的
@@ -2320,6 +3082,292 @@ def update_all_regulation_review_dates(
                 "鑑別日期格式錯誤"
         }
 
+    # ---------------------------------------------------------
+    # 若前端有傳入目前監控 PCode，
+    # 本次「同步鑑別」只允許作用於這些法規。
+    #
+    # monitored_pcodes = None
+    # → 保留舊版全部 Baseline 相容模式。
+    # ---------------------------------------------------------
+
+    target_pcodes = None
+
+    if monitored_pcodes is not None:
+
+        if (
+            not isinstance(
+                monitored_pcodes,
+                list
+            ) or
+            len(monitored_pcodes) == 0
+        ):
+            return {
+                "success":
+                    False,
+
+                "status":
+                    "invalid_scope",
+
+                "updatedCount":
+                    0,
+
+                "lastReviewedDate":
+                    None,
+
+                "error":
+                    "目前沒有可同步鑑別的監控法規"
+            }
+
+        normalized_pcodes = []
+
+        seen_pcodes = set()
+
+        for item in monitored_pcodes:
+
+            pcode = str(
+                item or ""
+            ).strip().upper()
+
+            if not re.fullmatch(
+                r"[A-Z]\d{7}",
+                pcode
+            ):
+                return {
+                    "success":
+                        False,
+
+                    "status":
+                        "invalid_scope",
+
+                    "updatedCount":
+                        0,
+
+                    "lastReviewedDate":
+                        None,
+
+                    "error":
+                        (
+                            "同步鑑別範圍包含無效 PCode："
+                            f"{pcode or '空白'}"
+                        )
+                }
+
+            if pcode in seen_pcodes:
+                continue
+
+            seen_pcodes.add(
+                pcode
+            )
+
+            normalized_pcodes.append(
+                pcode
+            )
+
+        target_pcodes = (
+            normalized_pcodes
+        )
+
+        # -----------------------------------------------------
+        # 同步鑑別前確認：
+        # 目前所有監控法規都必須已有中央 Baseline。
+        #
+        # 新法規若尚未執行第一次智能同步，
+        # 不能直接被標示成「今日已鑑別」。
+        # -----------------------------------------------------
+
+        state_result = (
+            get_regulation_state_list()
+        )
+
+        state_items = (
+            state_result.get(
+                "data",
+                []
+            )
+            if isinstance(
+                state_result,
+                dict
+            )
+            else []
+        )
+
+        if not isinstance(
+            state_items,
+            list
+        ):
+            state_items = []
+
+        existing_pcodes = {
+            str(
+                item.get(
+                    "Pcode"
+                ) or ""
+            )
+            .strip()
+            .upper()
+
+            for item in state_items
+
+            if isinstance(
+                item,
+                dict
+            )
+        }
+
+        missing_pcodes = [
+            pcode
+            for pcode in target_pcodes
+            if pcode not in existing_pcodes
+        ]
+
+        if missing_pcodes:
+            return {
+                "success":
+                    False,
+
+                "status":
+                    "baseline_missing",
+
+                "updatedCount":
+                    0,
+
+                "missingCount":
+                    len(
+                        missing_pcodes
+                    ),
+
+                "missingPcodes":
+                    missing_pcodes,
+
+                "lastReviewedDate":
+                    None,
+
+                "error":
+                    (
+                        "目前有新增法規尚未建立中央 Baseline，"
+                        "請先執行智能同步"
+                    )
+            }
+
+    # ---------------------------------------------------------
+    # 同步所有鑑別日期前，
+    # 必須先確認目前沒有任何等待人工確認的 Pending。
+    #
+    # 只要仍有一部 pending_review：
+    # → 整批不更新
+    # → 避免尚未人工閱讀的新法規
+    #   被誤標記為「今日已完成鑑別」。
+    # ---------------------------------------------------------
+
+    pending_result = (
+        get_regulation_pending_list()
+    )
+
+    pending_items = (
+        pending_result.get(
+            "data",
+            []
+        )
+        if isinstance(
+            pending_result,
+            dict
+        )
+        else []
+    )
+
+    if not isinstance(
+        pending_items,
+        list
+    ):
+        pending_items = []
+
+    # ---------------------------------------------------------
+    # 新資料驅動架構：
+    #
+    # 歷史 Baseline 即使仍保留於 Supabase，
+    # 只要已不在目前監控 laws，
+    # 就不應阻止目前監控法規同步鑑別。
+    # ---------------------------------------------------------
+
+    if target_pcodes is not None:
+
+        target_pcode_set = set(
+            target_pcodes
+        )
+
+        pending_items = [
+            item
+            for item in pending_items
+
+            if (
+                isinstance(
+                    item,
+                    dict
+                ) and
+                str(
+                    item.get(
+                        "Pcode"
+                    ) or ""
+                )
+                .strip()
+                .upper()
+                in target_pcode_set
+            )
+        ]
+
+    if pending_items:
+        pending_pcodes = [
+            str(
+                item.get(
+                    "Pcode"
+                ) or ""
+            )
+            .strip()
+            .upper()
+
+            for item in pending_items
+
+            if isinstance(
+                item,
+                dict
+            )
+        ]
+
+        pending_pcodes = [
+            pcode
+            for pcode in pending_pcodes
+            if pcode
+        ]
+
+        return {
+            "success":
+                False,
+
+            "status":
+                "pending_exists",
+
+            "updatedCount":
+                0,
+
+            "pendingCount":
+                len(
+                    pending_items
+                ),
+
+            "pendingPcodes":
+                pending_pcodes,
+
+            "lastReviewedDate":
+                None,
+
+            "error":
+                (
+                    f"目前仍有 {len(pending_items)} 部法規"
+                    "等待人工完成鑑別，"
+                    "因此本次未同步任何法規的鑑別日期"
+                )
+        }
+
     now_iso = time.strftime(
         "%Y-%m-%dT%H:%M:%SZ",
         time.gmtime()
@@ -2342,14 +3390,39 @@ def update_all_regulation_review_dates(
             "return=representation"
     }
 
-    # pcode 為此表必有欄位，
-    # 使用 not.is.null 只更新既有法規列。
+    # ---------------------------------------------------------
+    # 有明確監控範圍：
+    # → 只更新目前 laws 中的 PCode。
+    #
+    # 沒有傳範圍：
+    # → 保留舊版全部 Baseline 相容模式。
+    #
+    # status=baseline_ready：
+    # → 即使 Pending 在前置檢查後突然產生，
+    #   也不會更新該 Pending 法規的鑑別日期。
+    # ---------------------------------------------------------
+
+    pcode_filter = (
+        (
+            "in.(" +
+            ",".join(
+                target_pcodes
+            ) +
+            ")"
+        )
+        if target_pcodes is not None
+        else "not.is.null"
+    )
+
     response = requests.patch(
         url,
         headers=headers,
         params={
             "pcode":
-                "not.is.null"
+                pcode_filter,
+
+            "status":
+                "eq.baseline_ready"
         },
         json={
             "last_reviewed_date":
@@ -2380,14 +3453,54 @@ def update_all_regulation_review_dates(
     ):
         rows = []
 
+    updated_count = len(
+        rows
+    )
+
+    # ---------------------------------------------------------
+    # 若有指定目前監控範圍，
+    # 但實際更新筆數不同，
+    # 代表前置檢查後中央狀態又發生變化。
+    #
+    # 前端此時不能把全部日期一起改掉。
+    # ---------------------------------------------------------
+
+    if (
+        target_pcodes is not None and
+        updated_count !=
+            len(target_pcodes)
+    ):
+        return {
+            "success":
+                False,
+
+            "status":
+                "state_changed",
+
+            "updatedCount":
+                updated_count,
+
+            "expectedCount":
+                len(
+                    target_pcodes
+                ),
+
+            "lastReviewedDate":
+                None,
+
+            "error":
+                (
+                    "同步鑑別期間中央法規狀態已變更，"
+                    "請重新整理後再執行"
+                )
+        }
+
     return {
         "success":
             True,
 
         "updatedCount":
-            len(
-                rows
-            ),
+            updated_count,
 
         "lastReviewedDate":
             normalized_date,
@@ -3529,6 +4642,124 @@ def analyze_one_regulation_batch(law):
         }
 
     try:
+        # -----------------------------------------------------
+        # 每次批次智能同步前，
+        # 先確認這部法規是否已有中央 Baseline。
+        #
+        # 已存在：
+        # → initialize_one_regulation_baseline 只會 skipped，
+        #   絕不覆蓋既有 Baseline。
+        #
+        # 不存在：
+        # → 自動向全國法規資料庫取得目前正式版本，
+        #   建立第一份 Baseline。
+        # -----------------------------------------------------
+
+        baseline_result = (
+            initialize_one_regulation_baseline(
+                law
+            )
+        )
+
+        if not baseline_result.get(
+            "Success"
+        ):
+            return {
+                "Pcode":
+                    pcode,
+
+                "Name":
+                    (
+                        baseline_result.get(
+                            "Name"
+                        ) or
+                        law_name
+                    ),
+
+                "Success":
+                    False,
+
+                "Status":
+                    "baseline_init_failed",
+
+                "Changed":
+                    False,
+
+                "BaselineDate":
+                    None,
+
+                "CurrentDate":
+                    baseline_result.get(
+                        "Date"
+                    ),
+
+                "ChangedCount":
+                    0,
+
+                "Error":
+                    (
+                        baseline_result.get(
+                            "Error"
+                        ) or
+                        "Baseline 初始化失敗"
+                    )
+            }
+
+        # -----------------------------------------------------
+        # 新法規第一次進入系統：
+        #
+        # 剛建立的 Baseline 本身就是目前官方最新版，
+        # 因此這次不再重複向官方網站抓第二次，
+        # 也不建立假 Pending。
+        # -----------------------------------------------------
+
+        if (
+            baseline_result.get(
+                "Action"
+            ) == "created"
+        ):
+            initialized_date = (
+                baseline_result.get(
+                    "Date"
+                )
+            )
+
+            return {
+                "Pcode":
+                    pcode,
+
+                "Name":
+                    (
+                        baseline_result.get(
+                            "Name"
+                        ) or
+                        law_name
+                    ),
+
+                "Success":
+                    True,
+
+                "Status":
+                    "baseline_initialized",
+
+                "Changed":
+                    False,
+
+                "BaselineDate":
+                    initialized_date,
+
+                "CurrentDate":
+                    initialized_date,
+
+                "ChangedCount":
+                    0,
+
+                "Error":
+                    None
+            }
+
+        # 既有法規：
+        # 繼續執行原本 Baseline VS 官方最新版。
         result = (
             analyze_regulation_update(
                 pcode
@@ -3651,6 +4882,66 @@ def fetch_one_law(law):
 
 
 class handler(BaseHTTPRequestHandler):
+
+    def get_allowed_cors_origin(
+        self
+    ):
+        """
+        /api/sync-laws 使用相對網址，
+        正式情況應為同來源請求。
+
+        只有 Origin 與目前 Host 相同時，
+        才回傳 CORS Header。
+        """
+
+        origin = str(
+            self.headers.get(
+                "Origin",
+                ""
+            )
+            or ""
+        ).strip()
+
+        if not origin:
+            return ""
+
+        host = str(
+            self.headers.get(
+                "Host",
+                ""
+            )
+            or ""
+        ).strip().lower()
+
+        try:
+            parsed_origin = (
+                urlparse(
+                    origin
+                )
+            )
+
+        except Exception:
+            return ""
+
+        if (
+            parsed_origin.scheme not in
+            (
+                "http",
+                "https"
+            )
+        ):
+            return ""
+
+        if (
+            parsed_origin.netloc
+                .strip()
+                .lower() !=
+            host
+        ):
+            return ""
+
+        return origin
+
     def send_json(self, status_code, payload):
         body = json.dumps(
             payload,
@@ -3664,10 +4955,20 @@ class handler(BaseHTTPRequestHandler):
             "application/json; charset=utf-8"
         )
 
-        self.send_header(
-            "Access-Control-Allow-Origin",
-            "*"
+        cors_origin = (
+            self.get_allowed_cors_origin()
         )
+
+        if cors_origin:
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                cors_origin
+            )
+
+            self.send_header(
+                "Vary",
+                "Origin"
+            )
 
         self.send_header(
             "Access-Control-Allow-Methods",
@@ -3676,7 +4977,10 @@ class handler(BaseHTTPRequestHandler):
 
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type"
+            (
+                "Content-Type, "
+                "Authorization"
+            )
         )
 
         # 避免瀏覽器或平台使用舊同步資料
@@ -3698,13 +5002,104 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_OPTIONS(self):
-        self.send_response(204)
+    def require_osai_roles(
+        self,
+        allowed_roles
+    ):
+        """
+        驗證目前 /api/sync-laws
+        寫入型操作的中央 Session。
+        """
 
-        self.send_header(
-            "Access-Control-Allow-Origin",
-            "*"
+        try:
+            return (
+                validate_osai_access_session(
+                    self.headers.get(
+                        "Authorization",
+                        ""
+                    ),
+                    allowed_roles
+                )
+            )
+
+        except RegulationAccessError as exc:
+
+            self.send_json(
+                exc.status_code,
+                {
+                    "success":
+                        False,
+
+                    "error":
+                        exc.code
+                }
+            )
+
+            return None
+
+        except Exception as exc:
+
+            print(
+                "OSAI API Session 驗證失敗：",
+                str(exc)
+            )
+
+            self.send_json(
+                503,
+                {
+                    "success":
+                        False,
+
+                    "error":
+                        "ACCESS_STATE_UNAVAILABLE"
+                }
+            )
+
+            return None
+
+    def do_OPTIONS(self):
+
+        request_origin = str(
+            self.headers.get(
+                "Origin",
+                ""
+            )
+            or ""
+        ).strip()
+
+        cors_origin = (
+            self.get_allowed_cors_origin()
         )
+
+        # 有 Origin，
+        # 但不是目前網站本身，
+        # 直接拒絕跨來源呼叫。
+        if (
+            request_origin and
+            not cors_origin
+        ):
+            self.send_response(
+                403
+            )
+
+            self.end_headers()
+
+            return
+
+        self.send_response(
+            204
+        )
+
+        if cors_origin:
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                cors_origin
+            )
+
+            self.send_header(
+                "Vary",
+                "Origin"
+            )
 
         self.send_header(
             "Access-Control-Allow-Methods",
@@ -3713,7 +5108,10 @@ class handler(BaseHTTPRequestHandler):
 
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type"
+            (
+                "Content-Type, "
+                "Authorization"
+            )
         )
 
         self.end_headers()
@@ -3737,6 +5135,74 @@ class handler(BaseHTTPRequestHandler):
                     [""]
                 )[0]
             ).strip().lower()
+
+            # =================================================
+            # 生產 API 權限 Gate
+            # =================================================
+            #
+            # 讀取型：
+            # snapshot
+            # state-list
+            # pending-list
+            # pending
+            #
+            # 維持 Viewer 可讀。
+            #
+            # 寫入型則必須有正式
+            # OSAI Core Session。
+            # =================================================
+
+            protected_mode_roles = {
+                "baseline":
+                    {
+                        "admin"
+                    },
+
+                "baseline-all":
+                    {
+                        "admin"
+                    },
+
+                "diff":
+                    {
+                        "admin",
+                        "editor"
+                    },
+
+                "diff-all":
+                    {
+                        "admin",
+                        "editor"
+                    },
+
+                "approve":
+                    {
+                        "admin",
+                        "editor"
+                    },
+
+                "review-all":
+                    {
+                        "admin"
+                    }
+            }
+
+            required_roles = (
+                protected_mode_roles.get(
+                    mode
+                )
+            )
+
+            if required_roles is not None:
+
+                access_session = (
+                    self.require_osai_roles(
+                        required_roles
+                    )
+                )
+
+                if access_session is None:
+                    return
 
             # R1-B1：
             # 單一 PCode 完整條文 Snapshot 測試。
@@ -4147,6 +5613,42 @@ class handler(BaseHTTPRequestHandler):
 
             if mode == "review-all":
 
+                monitored_pcodes = None
+
+                monitored_pcodes_text = str(
+                    query.get(
+                        "pcodes",
+                        [""]
+                    )[0]
+                    or ""
+                ).strip()
+
+                if monitored_pcodes_text:
+
+                    try:
+                        monitored_pcodes = (
+                            json.loads(
+                                monitored_pcodes_text
+                            )
+                        )
+
+                    except json.JSONDecodeError:
+                        self.send_json(
+                            400,
+                            {
+                                "success":
+                                    False,
+
+                                "updatedCount":
+                                    0,
+
+                                "error":
+                                    "同步鑑別法規範圍格式錯誤"
+                            }
+                        )
+
+                        return
+
                 review_date_raw = str(
                     query.get(
                         "review_date",
@@ -4186,17 +5688,31 @@ class handler(BaseHTTPRequestHandler):
                 try:
                     result = (
                         update_all_regulation_review_dates(
-                            review_date
+                            review_date,
+                            monitored_pcodes
                         )
                     )
+                    if result.get(
+                        "success"
+                    ):
+                        status_code = 200
 
-                    status_code = (
-                        200
-                        if result.get(
-                            "success"
-                        )
-                        else 500
-                    )
+                    elif result.get(
+                        "status"
+                    ) in (
+                        "pending_exists",
+                        "baseline_missing",
+                        "state_changed"
+                    ):
+                        status_code = 409
+
+                    elif result.get(
+                        "status"
+                    ) == "invalid_scope":
+                        status_code = 400
+
+                    else:
+                        status_code = 500
 
                     self.send_json(
                         status_code,
@@ -4533,55 +6049,264 @@ class handler(BaseHTTPRequestHandler):
 
             if mode == "diff-all":
 
-                if not os.path.exists(
-                    LAW_LIST_PATH
-                ):
-                    self.send_json(
-                        500,
-                        {
-                            "success":
-                                False,
+                # -------------------------------------------------
+                # 新架構：
+                #
+                # 正常前端會將「目前正在監控的 laws」
+                # 直接傳給後端。
+                #
+                # 因此：
+                # - 新增法規不需要改 law_list.json
+                # - 刪除法規會自然退出同步範圍
+                # - Cloud Workspace / JSON 的結構仍由前端資料決定
+                #
+                # 若沒有傳 laws：
+                # 才退回既有 law_list.json，
+                # 保留維護與舊版相容能力。
+                # -------------------------------------------------
 
-                            "error":
-                                (
-                                    "找不到法規清單檔案："
-                                    f"{LAW_LIST_PATH}"
-                                )
-                        }
-                    )
+                requested_laws_text = str(
+                    query.get(
+                        "laws",
+                        [""]
+                    )[0]
+                    or ""
+                ).strip()
 
-                    return
+                if requested_laws_text:
 
-                with open(
-                    LAW_LIST_PATH,
-                    "r",
-                    encoding="utf-8"
-                ) as file:
-                    diff_law_list = (
-                        json.load(
-                            file
+                    try:
+                        requested_laws = (
+                            json.loads(
+                                requested_laws_text
+                            )
                         )
-                    )
 
-                if not isinstance(
-                    diff_law_list,
-                    list
-                ):
-                    self.send_json(
-                        500,
-                        {
-                            "success":
-                                False,
+                    except json.JSONDecodeError:
+                        self.send_json(
+                            400,
+                            {
+                                "success":
+                                    False,
 
-                            "error":
-                                (
-                                    "law_list.json "
-                                    "最外層必須是陣列"
-                                )
-                        }
-                    )
+                                "error":
+                                    "目前法規監控清單格式錯誤"
+                            }
+                        )
 
-                    return
+                        return
+
+                    if (
+                        not isinstance(
+                            requested_laws,
+                            list
+                        ) or
+                        len(
+                            requested_laws
+                        ) == 0
+                    ):
+                        self.send_json(
+                            400,
+                            {
+                                "success":
+                                    False,
+
+                                "error":
+                                    "目前沒有可同步的法規監控項目"
+                            }
+                        )
+
+                        return
+
+                    if (
+                        len(
+                            requested_laws
+                        ) > 100
+                    ):
+                        self.send_json(
+                            400,
+                            {
+                                "success":
+                                    False,
+
+                                "error":
+                                    "單次智能同步法規數量超過上限"
+                            }
+                        )
+
+                        return
+
+                    diff_law_list = []
+
+                    seen_pcodes = set()
+
+                    for (
+                        law_index,
+                        source_law
+                    ) in enumerate(
+                        requested_laws,
+                        start=1
+                    ):
+
+                        if not isinstance(
+                            source_law,
+                            dict
+                        ):
+                            self.send_json(
+                                400,
+                                {
+                                    "success":
+                                        False,
+
+                                    "error":
+                                        (
+                                            f"第 {law_index} 筆"
+                                            "法規資料格式錯誤"
+                                        )
+                                }
+                            )
+
+                            return
+
+                        pcode = str(
+                            source_law.get(
+                                "pcode",
+                                ""
+                            )
+                        ).strip().upper()
+
+                        law_name = str(
+                            source_law.get(
+                                "name",
+                                ""
+                            )
+                        ).strip()
+
+                        if not re.fullmatch(
+                            r"[A-Z]\d{7}",
+                            pcode
+                        ):
+                            self.send_json(
+                                400,
+                                {
+                                    "success":
+                                        False,
+
+                                    "error":
+                                        (
+                                            f"第 {law_index} 筆法規 "
+                                            f"PCode 格式錯誤："
+                                            f"{pcode or '空白'}"
+                                        )
+                                }
+                            )
+
+                            return
+
+                        if not law_name:
+                            self.send_json(
+                                400,
+                                {
+                                    "success":
+                                        False,
+
+                                    "error":
+                                        (
+                                            f"第 {law_index} 筆"
+                                            "法規名稱不能空白"
+                                        )
+                                }
+                            )
+
+                            return
+
+                        if pcode in seen_pcodes:
+                            self.send_json(
+                                400,
+                                {
+                                    "success":
+                                        False,
+
+                                    "error":
+                                        (
+                                            "法規監控清單存在重複 "
+                                            f"PCode：{pcode}"
+                                        )
+                                }
+                            )
+
+                            return
+
+                        seen_pcodes.add(
+                            pcode
+                        )
+
+                        diff_law_list.append(
+                            {
+                                "pcode":
+                                    pcode,
+
+                                "name":
+                                    law_name
+                            }
+                        )
+
+                else:
+                    # ---------------------------------------------
+                    # 舊版／維護模式：
+                    # 未傳入前端 laws 時，
+                    # 仍可使用既有 law_list.json。
+                    # ---------------------------------------------
+
+                    if not os.path.exists(
+                        LAW_LIST_PATH
+                    ):
+                        self.send_json(
+                            500,
+                            {
+                                "success":
+                                    False,
+
+                                "error":
+                                    (
+                                        "找不到法規清單檔案："
+                                        f"{LAW_LIST_PATH}"
+                                    )
+                            }
+                        )
+
+                        return
+
+                    with open(
+                        LAW_LIST_PATH,
+                        "r",
+                        encoding="utf-8"
+                    ) as file:
+                        diff_law_list = (
+                            json.load(
+                                file
+                            )
+                        )
+
+                    if not isinstance(
+                        diff_law_list,
+                        list
+                    ):
+                        self.send_json(
+                            500,
+                            {
+                                "success":
+                                    False,
+
+                                "error":
+                                    (
+                                        "law_list.json "
+                                        "最外層必須是陣列"
+                                    )
+                            }
+                        )
+
+                        return
 
                 diff_results = []
 
@@ -4717,6 +6442,21 @@ class handler(BaseHTTPRequestHandler):
                     )
                 )
 
+                initialized_count = sum(
+                    1
+                    for item
+                    in diff_results
+                    if (
+                        item.get(
+                            "Success"
+                        ) and
+                        item.get(
+                            "Status"
+                        ) ==
+                        "baseline_initialized"
+                    )
+                )
+
                 failed_count = sum(
                     1
                     for item
@@ -4755,6 +6495,9 @@ class handler(BaseHTTPRequestHandler):
 
                         "noChangeCount":
                             no_change_count,
+
+                        "initializedCount":
+                            initialized_count,
 
                         "failedCount":
                             failed_count,
