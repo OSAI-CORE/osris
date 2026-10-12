@@ -5138,6 +5138,52 @@ class handler(BaseHTTPRequestHandler):
         """
 
         try:
+            # =================================================
+            # Production POST 同來源驗證
+            # =================================================
+            #
+            # 正常 OSRIS 網頁：
+            # Origin 與 Host 相同 → 允許。
+            #
+            # 外站瀏覽器：
+            # Origin 不同 → 403。
+            #
+            # 沒有 Origin 的 Server / 維護工具：
+            # 仍必須通過後面的 Bearer Session 驗證。
+            # =================================================
+
+            request_origin = str(
+                self.headers.get(
+                    "Origin",
+                    ""
+                )
+                or ""
+            ).strip()
+
+            cors_origin = (
+                self.get_allowed_cors_origin()
+            )
+
+            if (
+                request_origin and
+                not cors_origin
+            ):
+                self.send_json(
+                    403,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "CROSS_ORIGIN_FORBIDDEN",
+
+                        "message":
+                            "不允許跨來源執行此操作"
+                    }
+                )
+
+                return
+
             content_type = str(
                 self.headers.get(
                     "Content-Type",
@@ -5267,12 +5313,32 @@ class handler(BaseHTTPRequestHandler):
                 or ""
             ).strip().lower()
 
-            # 只有真正寫入型 API
-            # 可以使用 POST。
+            # =================================================
+            # Production 正式 POST API
+            # =================================================
+            #
+            # 只開放目前前端真正使用的三個操作：
+            #
+            # diff-all
+            # → Admin / Editor 智能同步
+            #
+            # approve
+            # → Admin / Editor 完成鑑別
+            #
+            # review-all
+            # → Admin 同步鑑別
+            #
+            # 舊開發／維護端點：
+            # baseline
+            # baseline-all
+            # diff
+            #
+            # 不再對外提供 HTTP 呼叫。
+            # 內部 Python Function 仍保留，
+            # 不影響新法規自動建立 Baseline。
+            # =================================================
+
             allowed_post_modes = {
-                "baseline",
-                "baseline-all",
-                "diff",
                 "diff-all",
                 "approve",
                 "review-all"
@@ -5451,38 +5517,31 @@ class handler(BaseHTTPRequestHandler):
             ).strip().lower()
 
             # =================================================
-            # 生產 API 權限 Gate
+            # Production API Surface
             # =================================================
             #
-            # 讀取型：
-            # snapshot
-            # state-list
-            # pending-list
-            # pending
+            # 正式對外只保留：
             #
-            # 維持 Viewer 可讀。
+            # GET
+            # - state-list
+            # - pending
             #
-            # 寫入型則必須有正式
-            # OSAI Core Session。
+            # POST
+            # - diff-all
+            # - approve
+            # - review-all
+            #
+            # 其他歷史測試／維護 route
+            # 即使程式函式仍保留，
+            # Production HTTP 一律不對外開放。
             # =================================================
 
-            protected_mode_roles = {
-                "baseline":
-                    {
-                        "admin"
-                    },
+            public_get_modes = {
+                "state-list",
+                "pending"
+            }
 
-                "baseline-all":
-                    {
-                        "admin"
-                    },
-
-                "diff":
-                    {
-                        "admin",
-                        "editor"
-                    },
-
+            protected_post_mode_roles = {
                 "diff-all":
                     {
                         "admin",
@@ -5501,25 +5560,17 @@ class handler(BaseHTTPRequestHandler):
                     }
             }
 
-            required_roles = (
-                protected_mode_roles.get(
-                    mode
-                )
-            )
+            # -------------------------------------------------
+            # GET
+            # -------------------------------------------------
 
-            if required_roles is not None:
+            if request_method == "GET":
 
-                # ---------------------------------------------
-                # 所有 protected / 寫入型 mode
-                # 一律禁止外部 GET。
-                #
-                # 即使有合法 Session，
-                # 網址列也不能執行寫入操作。
-                # ---------------------------------------------
-
+                # 正式寫入型 mode 被 GET 呼叫：
+                # 明確回 405。
                 if (
-                    request_method !=
-                    "POST"
+                    mode in
+                    protected_post_mode_roles
                 ):
                     self.send_json(
                         405,
@@ -5531,9 +5582,52 @@ class handler(BaseHTTPRequestHandler):
                                 "METHOD_NOT_ALLOWED",
 
                             "message":
-                                (
-                                    "此操作僅允許使用 POST"
-                                )
+                                "此操作僅允許使用 POST"
+                        }
+                    )
+
+                    return
+
+                # 除 state-list / pending 外，
+                # 其他 GET route 不再公開。
+                if (
+                    mode not in
+                    public_get_modes
+                ):
+                    self.send_json(
+                        404,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "API_MODE_NOT_FOUND"
+                        }
+                    )
+
+                    return
+
+            # -------------------------------------------------
+            # POST
+            # -------------------------------------------------
+
+            elif request_method == "POST":
+
+                required_roles = (
+                    protected_post_mode_roles.get(
+                        mode
+                    )
+                )
+
+                if required_roles is None:
+                    self.send_json(
+                        405,
+                        {
+                            "success":
+                                False,
+
+                            "error":
+                                "METHOD_NOT_ALLOWED"
                         }
                     )
 
@@ -5547,6 +5641,20 @@ class handler(BaseHTTPRequestHandler):
 
                 if access_session is None:
                     return
+
+            else:
+                self.send_json(
+                    405,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "METHOD_NOT_ALLOWED"
+                    }
+                )
+
+                return
 
             # R1-B1：
             # 單一 PCode 完整條文 Snapshot 測試。
@@ -6863,118 +6971,33 @@ class handler(BaseHTTPRequestHandler):
 
                 return
 
-            if not os.path.exists(LAW_LIST_PATH):
-                raise FileNotFoundError(
-                    f"找不到法規清單檔案：{LAW_LIST_PATH}"
-                )
-
-            with open(
-                LAW_LIST_PATH,
-                "r",
-                encoding="utf-8"
-            ) as file:
-                law_list = json.load(file)
-
-            if not isinstance(law_list, list):
-                raise ValueError(
-                    "law_list.json 最外層必須是陣列"
-                )
-
-            results = []
-
-            # 同時最多三筆，避免請求過密或被限制
-            with ThreadPoolExecutor(
-                max_workers=3
-            ) as executor:
-
-                future_map = {
-                    executor.submit(
-                        fetch_one_law,
-                        law
-                    ): law
-                    for law in law_list
-                }
-
-                for future in as_completed(future_map):
-                    source_law = future_map[future]
-
-                    try:
-                        result = future.result()
-
-                    except Exception as exc:
-                        result = {
-                            "Pcode": source_law.get(
-                                "pcode",
-                                ""
-                            ),
-                            "Name": source_law.get(
-                                "name",
-                                ""
-                            ),
-                            "LastUpdate": None,
-                            "RawDate": None,
-                            "Success": False,
-                            "Error": (
-                                "工作執行失敗："
-                                f"{str(exc)}"
-                            )
-                        }
-
-                    results.append(result)
-
-            # 依 law_list.json 原始順序排列
-            order_map = {
-                str(
-                    law.get("pcode", "")
-                ).strip().upper(): index
-                for index, law in enumerate(law_list)
-            }
-
-            results.sort(
-                key=lambda item: order_map.get(
-                    item["Pcode"],
-                    999999
-                )
-            )
-
-            success_count = sum(
-                1
-                for item in results
-                if item["Success"]
-            )
-
-            failed_count = (
-                len(results) - success_count
-            )
-
-            failed_items = [
-                {
-                    "Pcode": item["Pcode"],
-                    "Name": item["Name"],
-                    "Error": item["Error"]
-                }
-                for item in results
-                if not item["Success"]
-            ]
+            # =================================================
+            # Defensive fallback
+            # =================================================
+            #
+            # 所有合法 Production mode
+            # 理論上都已於上方 return。
+            #
+            # 不再保留舊版：
+            # GET /api/sync-laws
+            # → 自動同步整份 law_list.json
+            #
+            # 避免無 mode 的公開請求
+            # 觸發大量外部 HTTP 工作。
+            # =================================================
 
             self.send_json(
-                200,
+                404,
                 {
-                    "success": success_count > 0,
-                    "count": len(results),
-                    "successCount": success_count,
-                    "failedCount": failed_count,
-                    "updatedAt": time.strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    ),
-                    "elapsedSeconds": round(
-                        time.time() - started_at,
-                        2
-                    ),
-                    "data": results,
-                    "failedItems": failed_items
+                    "success":
+                        False,
+
+                    "error":
+                        "API_MODE_NOT_FOUND"
                 }
             )
+
+            return
 
         except Exception as exc:
             self.send_json(
