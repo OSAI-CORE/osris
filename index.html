@@ -6423,6 +6423,9 @@ const buildRegulationProtectedApiHeaders =
         'Accept':
             'application/json',
 
+        'Content-Type':
+            'application/json',
+
         'Authorization':
             `Bearer ${
                 osaiSystemAccessSession.token
@@ -18059,12 +18062,6 @@ const handleAllSync = async () => {
      * 刪除的法規不會出現在此清單，
      * 因此自然停止後續智能同步。
      */
-    const currentSyncLawsQuery =
-        encodeURIComponent(
-            JSON.stringify(
-                currentSyncLaws
-            )
-        );
 
 setSyncText('智能同步執行中');
 setIsSyncing(true);
@@ -18134,17 +18131,30 @@ const timeoutId = setTimeout(() => {
 
     try {
 const response = await fetch(
-    `/api/sync-laws?mode=diff-all` +
-    `&laws=${currentSyncLawsQuery}` +
-    `&_=${Date.now()}`,
-            {
-                method: 'GET',
-                signal: controller.signal,
-                cache: 'no-store',
-headers:
-    buildRegulationProtectedApiHeaders()
-            }
-        );
+    '/api/sync-laws',
+    {
+        method:
+            'POST',
+
+        signal:
+            controller.signal,
+
+        cache:
+            'no-store',
+
+        headers:
+            buildRegulationProtectedApiHeaders(),
+
+        body:
+            JSON.stringify({
+                mode:
+                    'diff-all',
+
+                laws:
+                    currentSyncLaws
+            })
+    }
+);
 
         const responseText = await response.text();
 
@@ -18613,22 +18623,6 @@ const expectedPendingState =
         )
         : confirmedPendingState;
 
-const expectedPendingHashQuery =
-    expectedPendingHash
-        ? (
-            `&expected_pending_hash=` +
-            `${encodeURIComponent(expectedPendingHash)}`
-        )
-        : '';
-
-const expectedPendingStateQuery =
-    expectedPendingState
-        ? (
-            `&expected_pending_state=` +
-            `${encodeURIComponent(expectedPendingState)}`
-        )
-        : '';
-
 try {
             /*
              * 若此法規目前存在 pending_review，
@@ -18641,19 +18635,36 @@ try {
              */
 const approveResponse =
     await fetch(
-`/api/sync-laws?mode=approve` +
-`&pcode=${encodeURIComponent(pcode)}` +
-`&review_date=${encodeURIComponent(today)}` +
-expectedPendingHashQuery +
-expectedPendingStateQuery +
-`&_=${Date.now()}`,
-                    {
-                        method: 'GET',
-                        cache: 'no-store',
-                        headers:
-                            buildRegulationProtectedApiHeaders()
-                    }
-                );
+        '/api/sync-laws',
+        {
+            method:
+                'POST',
+
+            cache:
+                'no-store',
+
+            headers:
+                buildRegulationProtectedApiHeaders(),
+
+            body:
+                JSON.stringify({
+                    mode:
+                        'approve',
+
+                    pcode:
+                        pcode,
+
+                    review_date:
+                        today,
+
+                    expected_pending_hash:
+                        expectedPendingHash,
+
+                    expected_pending_state:
+                        expectedPendingState
+                })
+        }
+    );
 
             const approveText =
                 await approveResponse.text();
@@ -18813,13 +18824,6 @@ const handleAdminSyncIdentification =
                 item.pcode
         );
 
-    const currentReviewPcodesQuery =
-        encodeURIComponent(
-            JSON.stringify(
-                currentReviewPcodes
-            )
-        );
-
     const today =
         getTodayDateString();
 
@@ -18847,15 +18851,28 @@ const handleAdminSyncIdentification =
          */
         const reviewResponse =
             await fetch(
-                `/api/sync-laws?mode=review-all` +
-                `&review_date=${encodeURIComponent(today)}` +
-                `&pcodes=${currentReviewPcodesQuery}` +
-                `&_=${Date.now()}`,
+                '/api/sync-laws',
                 {
-                    method: 'GET',
-                    cache: 'no-store',
+                    method:
+                        'POST',
+
+                    cache:
+                        'no-store',
+
                     headers:
-                        buildRegulationProtectedApiHeaders()
+                        buildRegulationProtectedApiHeaders(),
+
+                    body:
+                        JSON.stringify({
+                            mode:
+                                'review-all',
+
+                            review_date:
+                                today,
+
+                            pcodes:
+                                currentReviewPcodes
+                        })
                 }
             );
 
